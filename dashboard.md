@@ -7,8 +7,8 @@ This dashboard provides an overview of the performance.
  - **Modle**: The method of prediction used.
  - **Hyperparameter**: The specific hyperparameter configuration used for the model.
  - **t0**: The starting time index for the prediction.
- - **len**: The length of the training data used.
- - **mae$D**: Mean Absolute Error over $D$ days of prediction.
+ - **input**: The length of the data points used.
+ - **rmse$D**: Root Mean Square Error over $D$ days of prediction.
 
 ## Model Performance
 
