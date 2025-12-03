@@ -9,7 +9,7 @@ It's data analysis repository for East Sea surface temperature prediction projec
 
 - [HYCOM Data Server](https://tds.hycom.org/thredds/catalogs/GLBy0.08/expt_93.0_ts3z.html): HYCOM (HYbrid Coordinate Ocean Model) provides the sea surface temperature data used in this project.
     - We specifically chose the GLBy0.08, experiment 93.0 dataset.
-    - The data $\left\{ Y_{t} \right\}_{t=1}^{2073}$ spans `2019-01-01` to `2024-09-04`, with a single data point at 12:00:00 each day.
+    - The data $\left\\{ Y_{t} \right\\}_{t=1}^{2073}$ spans `2019-01-01` to `2024-09-04`, with a single data point at 12:00:00 each day.
     - $Y\_{t} \in \mathbb{R}^{10 \times 15}$ represents the sea surface temperature, longitude($i \equiv x$) range 129.52°E to 130.24°E, latitude($j \equiv y$) range 36.32°N to 36.88°N. $\Delta x = 0.08^{\circ}, \Delta y = 0.08^{\circ}$ (see `data/lon.csv` and `data/lat.csv`).
 
 ### Preprocessing
