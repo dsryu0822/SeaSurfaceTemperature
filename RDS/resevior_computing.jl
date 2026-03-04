@@ -2,7 +2,7 @@ using Base.Threads: @threads, nthreads # Base.Threads.nthreads()
 import Pkg
 packages = [:CSV, :DataFrames, :Dates, :ProgressMeter, :FFTW, :StatsBase,
     :LinearAlgebra, :Distances, :JLD2, :NoiseRobustDifferentiation,
-    :Graphs, :Random, :LinearAlgebra] .|> string
+    :Graphs, :Random, :LinearAlgebra, :SparseArrays, :Plots] .|> string
 try
     @time eval(Meta.parse("using $(join(packages, ", "))"))
     println("All packages loaded")
@@ -47,7 +47,7 @@ Q = ncol(data)
 zk = ["z$k" for k in 1:Q]
 rename!(data, zk)
 
-# id_observer = [1:10; 141:150; 20:10:140; 11:10:131]; # reshape(1:150, 10, 15)
+id_observer = [1:10; 141:150; 20:10:140; 11:10:131]; # reshape(1:150, 10, 15)
 id_observer = [1, 10, 141, 150]
 # id_observer = [1]
 
@@ -70,7 +70,7 @@ r_ = [randn(N)]
 for u in eachcol(U)
     push!(r_, encode(r_[end], u))
 end
-pop!(r_); R = stack(r_)
+popfirst!(r_); R = stack(r_)
 S = Matrix(data[1:150, Not(id_observer)])'
 # Wout = S / R
 Wout = S*R'inv(R*R' + (β*LinearAlgebra.I))
@@ -84,7 +84,7 @@ prdt = decode(r_[end], [data[151, id_observer]...])
 only(rmse(prdt', actl'))
 
 
-struct prct1
+struct Reservoir
     M::Int64
     P::Int64
     N::Int64
@@ -97,10 +97,10 @@ struct prct1
     c::AbstractVector
     r::AbstractVector
 end
-function Base.show(io::IO, s::prct1)
+function Base.show(io::IO, s::Reservoir)
     print(io, "f: R^$(s.M) → R^$(s.P)")
 end
-function print(s::prct1)
+function print(s::Reservoir)
     println("""
     f: R^$(s.M) → R^$(s.P)
       reservoir size N = $(s.N)
@@ -110,20 +110,20 @@ function print(s::prct1)
     """)
     return nothing
 end
-function (s::prct1)(U)    
+function (s::Reservoir)(U)    
     encode(r, u) = (1-s.α)*r + tanh.(s.A * r + s.Win * u)
     decode(r, u) = s.Wout * encode(r, u) .+ s.c
 
     r_ = [s.r]
     [push!(r_, encode(r_[end], u)) for u in eachcol(U)]
-    pop!(r_); R = stack(r_)
+    popfirst!(r_); R = stack(r_)
     S_pred = s.Wout * R .+ s.c
     return S_pred    
 end
 function reservoir_computing(U::AbstractMatrix, S::AbstractMatrix;
-    seed = 0, N = 500, D = 2, α = 1.0, β = 1e-2, ρ = 1.0)
+    seed = -1, N = 500, D = 2, α = 0.5, β = 1e-2, ρ = 1.0, preitr = 10)
 
-    Random.seed!(seed)
+    if seed ≥ 0 Random.seed!(seed) end
     M = size(U, 1)
     P = size(S, 1)
     RN = erdos_renyi(N, (D*N ÷ 2))
@@ -133,17 +133,67 @@ function reservoir_computing(U::AbstractMatrix, S::AbstractMatrix;
     encode(r, u) = (1-α)*r + tanh.(A * r + Win * u)
     r_ = [randn(N)]
     [push!(r_, encode(r_[end], u)) for u in eachcol(U)]
-    pop!(r_); R = stack(r_)
+    popfirst!(r_); R = stack(r_)
+    R = R[:, (preitr+1):end]
+    S = S[:, (preitr+1):end]
     Wout = S*R'inv(R*R' + (β*LinearAlgebra.I))
     c = -vec(Wout * mean(R, dims = 2) - mean(S, dims = 2))
-    return prct1(M, P, N, α, β, ρ, A, Win, Wout, c, r_[end])
+    return Reservoir(M, P, N, α, β, ρ, A, Win, Wout, c, r_[end])
 end
 
+id_observer = [1, 10, 141, 150]
+# tspan = 30 .+ (1:(3*365))
+tspan = 1:findlast(T .< Date(2023, 01, 08))
+U = Matrix(data[tspan, id_observer])'
+S = Matrix(data[tspan, Not(id_observer)])'
+
+# g = reservoir_computing(U, S; α = 0.5, ρ = 1) # good for 30 days
+g = reservoir_computing(U, S; α = 1)
+
+newU = Matrix(data[last(tspan) .+ (1:30), id_observer])'
+actS = Matrix(data[last(tspan) .+ (1:30), Not(id_observer)])'
+newS = g(newU)
+_rmse = vec(rmse(newS', actS'))
+
+newX = [newS; newU][sortperm([setdiff(1:150, id_observer); id_observer]), :]
+
+rmse1, rmse7, rmse30 = round.([_rmse[1], _rmse[7], _rmse[30]], digits = 2)
+t = 30
+Y0 = tnsr[:, :, last(tspan) + t]
+Y1 = reshape(newX, 10, 15, :)[:, :, t]
+plt_rmse = plot(_rmse, color = :black, legend = :none)
+scatter!(plt_rmse, [t], [_rmse[t]])
+plot(
+    heatmap(Y0, clims = extrema([Y0; Y1])),
+    heatmap(Y1, clims = extrema([Y0; Y1])),
+    heatmap(Y0 - Y1, clims = (-5, 5), color = [:blue, :white, :red]),
+    plt_rmse,
+    plot_title = "err1: $(rmse1), err7: $(rmse7), err30: $(rmse30)",
+)
 
 
-asdf = reservoir_computing(U, S)
+"""'''''''''''''''''''''''''''''''''''''''''''''
 
-asdf |> print
-asdf.r
+                LSTM observation        
 
-asdf(U)
+'''''''''''''''''''''''''''''''''''''''''''''"""
+
+LSTMpred = CSV.read("lstm_prediction_4points.csv", DataFrame)[:, 1:2:end]
+newU2 = Matrix(LSTMpred[1:30, Not(:date)])'
+newS2 = g(newU2)
+_rmse2 = vec(rmse(newS2', actS'))
+
+newX2 = [newS2; newU2][sortperm([setdiff(1:150, id_observer); id_observer]), :]
+
+rmse1, rmse7, rmse30 = round.([_rmse2[1], _rmse2[7], _rmse2[30]], digits = 2)
+Y0 = tnsr[:, :, last(tspan) + t]
+Y1 = reshape(newX2, 10, 15, :)[:, :, t]
+plt_rmse2 = plot(_rmse2, color = :black, legend = :none)
+scatter!(plt_rmse2, [t], [_rmse2[t]])
+plot(
+    heatmap(Y0, clims = extrema([Y0; Y1])),
+    heatmap(Y1, clims = extrema([Y0; Y1])),
+    heatmap(Y0 - Y1, clims = (-5, 5), color = [:blue, :white, :red]),
+    plt_rmse2,
+    plot_title = "err1: $(rmse1), err7: $(rmse7), err30: $(rmse30)",
+)

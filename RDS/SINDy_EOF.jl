@@ -57,39 +57,25 @@ _T = findall(Year.(T) .< Year(2024))
 
 """'''''''''''''''''''''''''''''''''''''''''''''
 
-                brute-force search              
+        Empirical orthogonal function (EOF)
 
 '''''''''''''''''''''''''''''''''''''''''''''"""
+M = Matrix(data)
+U, S, V = svd(Matrix(data))
+S ./ sum(S)
+plot(S, seriestype=:scatter, title="Scree Plot", xlabel="Mode", ylabel="Singular Value", legend=false)
+svd(Matrix(ddata[:, 1:dim]))
+plot(U[:, 2])
+# plot(data.z1)
+V
 
-cnfg = cook(zk; poly = 0:2)
-resultBF = DataFrame(Model = [], t0 = [], input = [], R2 = [], rmse1 = [], rmse7 = [], rmse30 = [], Hyperparameter = [])
-task0 = begin
-    @showprogress @threads for t0 = _T
-    t1 = t0 + input - 1
-    r2_ = zeros(800)
-    hp_ = [[] for _ in 1:800]
-    for ti in eachindex(r2_)
-        _selected = sort(cnfg[shuffle(1:nrow(cnfg))[1:8], :], :index)
-        f = SINDy(ddata[t0:t1, :], vrbl, _selected)
-        # println("$(f.r2)")
-        r2_[ti] = f.r2
-        hp_[ti] = _selected.index
-    end
-    
-    selected = cnfg[hp_[argmax(r2_)], :]
-    f = SINDy(ddata[t0:t1, :], vrbl, selected)
+eof = DataFrame(u1 = U[:, 1], u2 = U[:, 2], u3 = U[:, 3])
+deof = add_diff(eof, method = :TVD)
+uvrbl = (names(deof)[1:ncol(eof)], names(deof)[(ncol(eof)+1):end])
+ucnfg = cook(last(uvrbl); poly = 0:3)
+fu = SINDy(deof, uvrbl, ucnfg)
+fu.r2
 
-    v = collect(ddata[t1, last(vrbl)])
-    prdt = solve(f, v, 0:h:output)[1:Int64(1/h):end, :]
-    test = Matrix(data[t1:(t1+output), :])
 
-    pfmc = rmse(prdt, test; dims = 2)[2:end]
-    push!(resultBF, ["SINDy", t0, input, maximum(r2_), pfmc[1], pfmc[7], pfmc[30], selected.index])
-    end
-    CSV.write("dashboard/SINDy_brute_force.csv", resultBF, bom = true)
-end
-resultBF
-istaskstarted(task0)
-istaskdone(task0)
-istaskfailed(task0)
-
+CSV.read("EOF_modes_anomaly.csv", DataFrame)
+CSV.read("PCs_anomaly_EOF.csv", DataFrame)
