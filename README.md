@@ -22,3 +22,8 @@ It's data analysis repository for East Sea surface temperature prediction projec
  - Index `t` is mapped to `2019-01-01` as `t=1`, `2019-01-02` as `t=2`, ..., up to `2024-09-04` as `t=2073`.
  - Index `i` (longitude) is mapped from `129.52°E` as `i=1`, `129.60°E` as `i=2`, ..., to `130.24°E` as `i=10`.
  - Index `j` (latitude) is mapped from `36.32°N` as `j=1`, `36.40°N` as `j=2`, ..., to `36.88°N` as `j=15`.
+
+## References
+
+ - Predicting sea surface temperatures with coupled
+reservoir computers: https://doi.org/10.5194/npg-29-255-2022
