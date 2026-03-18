@@ -27,3 +27,5 @@ It's data analysis repository for East Sea surface temperature prediction projec
 
  - Predicting sea surface temperatures with coupled
 reservoir computers: https://doi.org/10.5194/npg-29-255-2022
+ - Joh, Y., Lee, S., Park, YG. et al. Predictability and prediction skill of summertime East/Japan Sea surface temperature events. npj Clim Atmos Sci 7, 210 (2024). https://doi.org/10.1038/s41612-024-00754-7
+

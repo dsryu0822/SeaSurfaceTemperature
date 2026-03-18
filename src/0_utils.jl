@@ -56,7 +56,7 @@ end
 function Base.show(io::IO, s::Reservoir)
     Base.print(io, "f: R^$(s.M) → R^$(s.P)")
 end
-function print(s::Reservoir)
+function Base.print(s::Reservoir)
     Base.print("""
     f: R^$(s.M) → R^$(s.P)
       reservoir size N = $(s.N)
@@ -67,7 +67,7 @@ function print(s::Reservoir)
     return nothing
 end
 function (s::Reservoir)(U)    
-    encode(r, u) = (1-s.α)*r + tanh.(s.A * r + s.Win * u)
+    encode(r, u) = (1-s.α)*r + s.α*tanh.(s.A * r + s.Win * u)
     decode(r, u) = s.Wout * encode(r, u) .+ s.c
 
     r_ = [s.r]
@@ -77,21 +77,22 @@ function (s::Reservoir)(U)
     return S_pred    
 end
 function reservoir_computing(U::AbstractMatrix, S::AbstractMatrix;
-    seed = -1, N = 500, D = 2, α = 0.5, β = 1e-2, ρ = 1.0, preitr = 10)
+    seed = -1, warmup = 10,
+    N = 500, D = 2, α = 0.5, β = 1e-2, ρ = 1.0, σ = 1)
 
     if seed ≥ 0 Random.seed!(seed) end
     M = size(U, 1)
     P = size(S, 1)
     RN = erdos_renyi(N, (D*N ÷ 2))
     A = adjacency_matrix(RN) .* 2(rand(N, N) .- .5)
-    A = ρ*A / maximum(sqrt.(sum.(abs2, eigen(Matrix(A)).values)))
-    Win = sparse(stack([shuffle([1; zeros(M-1)]) for _ in 1:N])') .* 2(rand(N, M) .- .5)
-    encode(r, u) = (1-α)*r + tanh.(A * r + Win * u)
+    A = ρ*A / maximum(abs.(eigen(Matrix(A)).values))
+    Win = σ*(sparse(stack([shuffle([1; zeros(M-1)]) for _ in 1:N])') .* 2(rand(N, M) .- .5))
+    encode(r, u) = (1-α)*r + α*tanh.(A * r + Win * u)
     r_ = [randn(N)]
     [push!(r_, encode(r_[end], u)) for u in eachcol(U)]
     popfirst!(r_); R = stack(r_)
-    R = R[:, (preitr+1):end]
-    S = S[:, (preitr+1):end]
+    R = R[:, (warmup+1):end]
+    S = S[:, (warmup+1):end]
     Wout = S*R'inv(R*R' + (β*LinearAlgebra.I))
     c = -vec(Wout * mean(R, dims = 2) - mean(S, dims = 2))
     return Reservoir(M, P, N, α, β, ρ, A, Win, Wout, c, r_[end])
