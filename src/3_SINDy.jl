@@ -1,153 +1,75 @@
 include("0_utils.jl")
-include("1_datacall.jl")
-include("C:/Users/rmsms/OneDrive/lab/DataDrivenModel/core/header.jl")
+# JLD2.@save "G:/seasurface/nino3.4/data.jld2" data T X Y
+@time JLD2.@load "G:/seasurface/nino3.4/data.jld2"
+include.(readdir("C:/Users/rmsms/OneDrive/lab/DataDrivenModel/core", join=true))
 
-"""'''''''''''''''''''''''''''''''''''''''''''''
+to2(x) = reshape(collect(x), length(Y), length(X))
+datasplit(array, bits) = (array[bits,:], array[.!bits,:])
+recover(matrices, indices) = matrices[:, sortperm(indices)]
 
-                SINDy for z1
-
-'''''''''''''''''''''''''''''''''''''''''''''"""
-dtemp = add_diff(rename(add_diff(data[:, [1]], method = :TVD), ["v", "u"]), method = :TVD)[:, ["dv", "v"]]
-ddata = add_diff([dtemp[:, ["v"]] data[:, [1]]], method = :TVD)
-
-trng_z = ddata[T .< Date(2023, 1, 1), :]
-test_z = ddata[T .≥ Date(2023, 1, 1), :]
-
-vrbl = getindex.(variablenames(trng_z), Ref(1:2))
-
-cnfg = cook(last(vrbl); poly = 0:2)
-f = SINDy(trng_z, vrbl, cnfg); # f |> print
-
-prdt = solve(f, [test_z[t1, last(vrbl)]...], 0:0.01:30)[101:100:end, Not(1)]
-plt_z1_1 = plot(test_z.z1[t1:end], xlims = [0, 30]); plot!(prdt[:, 1])
-plt_z1_2 = plot(prdt - test_z.z1[t1 .+ (1:30)], xlims = [0, 30])
-
-
-errors = []
-for t1 = 1:10:365
-    prdt = solve(f, [test_z[t1, last(vrbl)]...], 0:0.01:30)[101:100:end, Not(1)]
-    plt_z1 = plot(test_z.z1[t1:end], xlims = [0, 30]); plot!(prdt[:, 1])
-    push!(errors, rmse(prdt, test_z.z1[t1 .+ (1:30)], dims = 2)[:])
+id_missing = findall((eltype.(eachcol(data))) .== Missing)
+function recoverH(matrices, indice)
+    void = fill(missing, size(matrices, 1), length(id_missing))
+    return recover([matrices;; void], [indice; id_missing])
 end
-mean(stack(errors), dims = 2)[:]
+id_ovserver = []
+id_target = setdiff(axes(data, 2), [id_missing; id_ovserver])
 
+# 가장 뒷줄에 t = 1, ... 추가
+_data = [data DataFrame(t = axes(data, 1))]
+trng, test = datasplit(_data, T .< Date(2023, 1, 1));
 
-"""'''''''''''''''''''''''''''''''''''''''''''''
+@time eofed = eof(Matrix(trng)[:, [id_target; end]])
+eof_transform(xx, nu) = xx / (diagm(eofed.Σ[1:nu]) * eofed.V[:, 1:nu]')
+eof_transform(Matrix(test[1:2, [id_target; end]]), 3)
+plot(cumsum(eofed.Σ ./ sum(eofed.Σ)), xscale = :log10, label = :none, color = :black)
 
-                SINDy for all z
+# N = 3까지 사용
+U = eofed.U[:, 1:3]
+dfU = add_diff(DataFrame(U, :auto); method = :TVD)
+vrbl = half(names(dfU))
 
-'''''''''''''''''''''''''''''''''''''''''''''"""
-resultSINDy = DataFrame(Model = [], t0 = [], input = [], R2 = [], rmse1 = [], rmse7 = [], rmse30 = [])
-for k in 1:150 push!(resultSINDy, ["", 0, 0, 0, 0, 0, 0]) end
-f_ = [SINDy() for _ in 1:150]
-prdt__ = [[] for _ in 1:150]
-@showprogress @threads for k = 1:150
-    dtemp = add_diff(rename(add_diff(data[:, [k]], method = :TVD), ["v", "u"]), method = :TVD)[:, ["dv", "v"]]
-    ddata = add_diff([dtemp[:, ["v"]] data[:, [k]]], method = :TVD)
+plot([plot(u) for u in eachcol(U)]...,layout = (:, 1), legend = :none)
 
-    trng_z = ddata[T .< Date(2023, 1, 1), :]
-    test_z = ddata[T .≥ Date(2023, 1, 1), :]
-
-    vrbl = getindex.(variablenames(trng_z), Ref(1:2))
-
-    cnfg = cook(last(vrbl); poly = 0:1)
-    f = SINDy(trng_z, vrbl, cnfg); # f |> print
-    f_[k] = f
-
-    resultSINDy365 = DataFrame(Model = [], t0 = [], input = [], R2 = [], rmse1 = [], rmse7 = [], rmse30 = [])
-    for k in 1:365 push!(resultSINDy365, ["", 0, 0, 0, 0, 0, 0]) end
-    errors = [[] for _ in 1:365]
-    prdt_ = zeros(365)
-    for t1 = 1:365
-        prdt = solve(f, [test_z[t1, last(vrbl)]...], 0:0.01:30)[101:100:end, Not(1)]
-        prdt_[t1] = prdt[1]
-        errors[t1] = rmse(prdt, test_z[t1 .+ (1:30), end], dims = 2)[:]
-        error1, error7, error30 = round.([errors[t1][1], errors[t1][7], errors[t1][30]], digits = 3)
-        resultSINDy365[t1, :] = ["SINDy with z$k", t1, 1, f.r2, error1, error7, error30]
-    end
-    prdt__[k] = prdt_
-    CSV.write("G:/seasurface/260325/resultSINDy_z$k.csv", resultSINDy365)
-    rmse_ = mean(stack(errors), dims = 2)[:]
-    rmse1, rmse7, rmse30 = round.([rmse_[1], rmse_[7], rmse_[30]], digits = 3)
-    resultSINDy[k, :] = ["SINDy with z$k", -1, 1, f.r2, rmse1, rmse7, rmse30]
-    CSV.write("G:/seasurface/260325/resultSINDy.csv", resultSINDy)
+f = SINDy(dfU, vrbl, cook(last(vrbl); poly = 0:2)); f |> print
+tend = 300
+@time V = solve(f, collect(dfU[end, last(vrbl)]), 0:1e-2:tend)[1:100:end, :][2:end, :];
+futureU = eof_transform(Matrix(test[1:300, [id_target; end]]), 3)
+plt_l_ = []
+for j in axes(V, 2)
+    U = futureU
+    plt_l = plot(U[1:tend, j], ylabel = "EOF$j", label = "EOF")
+    plot!(plt_l, V[:, j], label = "SINDy")
+    push!(plt_l_, plt_l)
 end
+plot(plt_l_..., layout = (:, 1), legend = :none, size = [600, 200length(plt_l_)])
 
-cprA = dataframe2tensor(data[Date(2023, 1, 2) .≤ T .≤ Date(2024, 1, 1), :])
-cprB = reshape(stack(prdt__)', 10, 15, :)
-# rmse(cprA[1,1,:], cprB[1,1,:], dims = 2)
-# rmse(cprA, cprB)
-anime = @animate for t1 = 1:365
-    rmse1 = round(rmse(cprA[:, :, t1], cprB[:, :, t1]), digits = 3)
-    plot(
-        heatmap(cprA[:, :, t1]),
-        heatmap(cprB[:, :, t1]),
-        heatmap(cprA[:, :, t1] - cprB[:, :, t1], color = :balance, clims = (-1, 1)),
-        layout = (1, 3), size = (1200, 400),
-        plot_title = "$(T[Date(2023, 1, 2) .≤ T .≤ Date(2024, 1, 1)][t1]), rmse1 = $rmse1",
-    )
+foo = recoverH(eofed(V)[:, Not(end)], id_target)
+heatmap(Y, X, to2(foo[30, :])', size = [800, 200])
+
+actl = Matrix(test[1:tend, id_target]);
+prdt = Matrix(foo[1:end, id_target]);
+
+plot(sqrt.(mean.(abs2, eachrow(actl - prdt))), label = :none, color = :black)
+
+# 아래부터는 생각보다 EOF로 보는 손실이 큰 것 확인
+
+plot(sqrt.(mean.(abs2, eachrow(eofed(eofed.U[:, 1:3])[:, Not(end)] - Matrix(trng[:, id_target])))), color = :black, label = :none)
+
+(eofed.Σ ./ sum(eofed.Σ)) |> cumsum
+
+# N = 5까지 사용
+dfU = add_diff(DataFrame(eofed.U[:, 1:5], :auto); method = :TVD)
+vrbl = half(names(dfU))
+f = SINDy(dfU, vrbl, cook(last(vrbl); poly = 0:2), λ = 1e-3); f |> print
+tend = 100
+@time V = solve(f, collect(dfU[end, last(vrbl)]), 0:1e-1:tend)[1:10:end, :][2:end, :]
+futureU = eof_transform(Matrix(test[1:300, [id_target; end]]), 5)
+plt_l_ = []
+for j in axes(futureU, 2)
+    U = futureU
+    plt_l = plot(U[1:tend, j], ylabel = "EOF$j", label = "EOF")
+    plot!(plt_l, V[:, j], label = "SINDy")
+    push!(plt_l_, plt_l)
 end
-mp4(anime, "G:/seasurface/260325/movie.mp4", fps = 4)
-
-
-"""'''''''''''''''''''''''''''''''''''''''''''''
-
-            Convolutional SINDy
-
-'''''''''''''''''''''''''''''''''''''''''''''"""
-
-function splash(k)
-    bit_matrix = zeros(Bool, 10, 15)
-    bit_matrix[k] = true
-    for ij in Ref([findfirst(bit_matrix).I...]) .+ [[1,0], [-1,0], [0,1], [0,-1], [1,1], [1,-1], [-1,1], [-1,-1]]
-        try
-            bit_matrix[ij...] = true
-        catch
-        end
-    end
-    return findall(bit_matrix[:])
-end
-splash(75)
-whereis(splash(75))
-
-resultSINDy = DataFrame(Model = [], t0 = [], input = [], R2 = [], rmse1 = [], rmse7 = [], rmse30 = [])
-for k in 1:150 push!(resultSINDy, ["", 0, 0, 0, 0, 0, 0]); push!(f_, ) end
-f_ = [SINDy() for _ in 1:150]
-prdt__ = [[] for _ in 1:150]
-@showprogress @threads for k = 1:150
-    k_ = splash(k)
-    dim = length(k_)
-    
-    dtemp = add_diff(data[:, k_], method = :TVD)
-    ddtemp = add_diff(dtemp[:, 1:dim], method = :TVD)
-    ddata = [ddtemp data[:, k_]]
-
-    trng_z = ddata[T .< Date(2023, 1, 1), :]
-    test_z = ddata[T .≥ Date(2023, 1, 1), :]
-
-    # vrbl = getindex.(variablenames(trng_z), Ref(1:2))
-    # vrbl = (names(ddtemp), names(data)[k_])
-    vrbl = (names(ddtemp), names(dtemp))
-
-    cnfg = cook(last(vrbl); poly = 0:2)
-    f = SINDy(trng_z, vrbl, cnfg); # f |> print
-    f_[k] = f
-
-    resultSINDy365 = DataFrame(Model = [], t0 = [], input = [], R2 = [], rmse1 = [], rmse7 = [], rmse30 = [])
-    for k in 1:365 push!(resultSINDy365, ["", 0, 0, 0, 0, 0, 0]) end
-    errors = [[] for _ in 1:365]
-    prdt_ = zeros(365)
-    for t1 = 1:365
-        prdt = DataFrame(solve(f, [test_z[t1, last(vrbl)]...], 0:0.01:30)[101:100:end, (dim+1):end], names(data[:, k_]))[:, names(data)[k]]
-        prdt_[t1] = prdt[1]
-        errors[t1] = rmse(prdt, test_z[t1 .+ (1:30), end], dims = 2)[:]
-        error1, error7, error30 = round.([errors[t1][1], errors[t1][7], errors[t1][30]], digits = 3)
-        resultSINDy365[t1, :] = ["SINDy with z$k", t1, 1, f.r2, error1, error7, error30]
-    end
-    prdt__[k] = prdt_
-    CSV.write("G:/seasurface/260324/resultSINDy_z$k.csv", resultSINDy365)
-    rmse_ = mean(stack(errors), dims = 2)[:]
-    rmse1, rmse7, rmse30 = round.([rmse_[1], rmse_[7], rmse_[30]], digits = 3)
-    resultSINDy[k, :] = ["SINDy with z$k", -1, 1, f.r2, rmse1, rmse7, rmse30]
-    CSV.write("G:/seasurface/260324/resultSINDy.csv", resultSINDy)
-end
+plot(plt_l_..., layout = (:, 1), legend = :none, size = [600, 200length(plt_l_)])

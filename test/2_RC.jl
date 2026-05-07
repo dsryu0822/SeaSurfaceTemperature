@@ -4,17 +4,17 @@ include("1_datacall.jl")
 
 # t0 = 1
 id_observer = [1, 10, 141, 150]
-# tspan = t0:findlast(T .< Date(2023, 01, 08))
-# _U = Matrix(data[tspan, id_observer])';
-# _S = Matrix(data[tspan, Not(id_observer)])';
-# newU = Matrix(data[last(tspan) .+ (1:30), id_observer])';
-# actS = Matrix(data[last(tspan) .+ (1:30), Not(id_observer)])';
+tspan = t0:findlast(T .< Date(2023, 01, 08))
+_U = Matrix(data[tspan, id_observer])';
+_S = Matrix(data[tspan, Not(id_observer)])';
+newU = Matrix(data[last(tspan) .+ (1:30), id_observer])';
+actS = Matrix(data[last(tspan) .+ (1:30), Not(id_observer)])';
 
-# rc = reservoir_computing(_U, _S; α = 1)
-# newS = rc(newU);
-# # newX = [newS; newU][sortperm([setdiff(1:150, id_observer); id_observer]), :];
-# rmse_ = vec(rmse(newS, actS, dims = 1));
-# rmse1, rmse7, rmse30 = round.([rmse_[1], rmse_[7], rmse_[30]], digits = 2)
+rc = reservoir_computing(_U, _S; α = 1)
+newS = rc(newU);
+newX = [newS; newU][sortperm([setdiff(1:150, id_observer); id_observer]), :];
+rmse_ = vec(rmse(newS, actS, dims = 1));
+rmse1, rmse7, rmse30 = round.([rmse_[1], rmse_[7], rmse_[30]], digits = 2)
 
 # plot(actS[4, :])
 # plot!(newS[4, :])
@@ -24,6 +24,17 @@ id_observer = [1, 10, 141, 150]
 # heatmap((actS - newS)[1:8, :])
 
 
+t = 7
+actZ_t = reshape(collect(data[last(tspan) .+ t, :]), 10, :)
+prdZ_t = reshape(newX[:, t], 10, :)
+errZ_t = actZ_t - prdZ_t
+plot(
+    heatmap(Y, X, actZ_t, clims = extrema(newX)),
+    heatmap(Y, X, prdZ_t, clims = extrema(newX)),
+    heatmap(Y, X, errZ_t, clims = (-2, 2), color = [:blue, :white, :red]),
+    layout = (1, 3), size = [1200, 400],
+    plot_title = "t = $t, RMSE: $(round(rmse_[t], digits = 2))"
+)
 
 A = Matrix(LSTMpred[:, 2:end])
 B = Matrix(LSTMpred[:, 2:end])
@@ -185,3 +196,6 @@ end
 # default()
 heatmap(tnsr[:, :, 1])
 heatmap(tnsr[:, :, 1][:])
+
+using PRIMA
+

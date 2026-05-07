@@ -28,4 +28,7 @@ It's data analysis repository for East Sea surface temperature prediction projec
  - Predicting sea surface temperatures with coupled
 reservoir computers: https://doi.org/10.5194/npg-29-255-2022
  - Joh, Y., Lee, S., Park, YG. et al. Predictability and prediction skill of summertime East/Japan Sea surface temperature events. npj Clim Atmos Sci 7, 210 (2024). https://doi.org/10.1038/s41612-024-00754-7
+ - Niño 3.4: https://climatedataguide.ucar.edu/climate-data/nino-sst-indices-nino-12-3-34-4-oni-and-tni
+ - Gao, M. L., Williams, J. P., & Kutz, J. N. (2025). Sparse identification of nonlinear dynamics and koopman operators with shallow recurrent decoder networks. arXiv preprint arXiv:2501.13329. https://arxiv.org/pdf/2501.13329 https://github.com/gaoliyao/sindy-shred
+ - Williams, J. P., Zahn, O., & Kutz, J. N. (2024). Sensing with shallow recurrent decoder networks. Proceedings of the Royal Society A: Mathematical, Physical and Engineering Sciences, 480(2298). https://doi.org/10.1098/rspa.2024.0054 https://www.youtube.com/watch?v=UYDfWJxvKGw
 
