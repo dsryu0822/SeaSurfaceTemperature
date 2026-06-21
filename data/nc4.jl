@@ -1,6 +1,6 @@
 using HTTP, NCDatasets, DataFrames, Dates, CSV, JLD2, StatsBase, ProgressMeter
 using Base.Threads
-cd("G:/nino/")
+cd("G:/seasurface/nino3.4")
 
 # East Sea
         # &north=36.88
@@ -19,7 +19,7 @@ cd("G:/nino/")
         # &south=-5
 
 
-# @showprogress @threads for day in Date(2019, 1, 1):Date(2024, 9, 5)
+# @showprogress @threads for day in Date(2024, 8, 10):Date(2026, 5, 25)
 #     experiment = "https://ncss.hycom.org/thredds/ncss/GLBy0.08/expt_93.0/ts3z/$(Year(day).value)"
 #     if day < Date(2015, 12, 30)
 #         experiment = "https://ncss.hycom.org/thredds/ncss/GLBv0.08/expt_53.X/data/$(Year(day).value)"
@@ -33,6 +33,8 @@ cd("G:/nino/")
 #         experiment = "https://ncss.hycom.org/thredds/ncss/GLBv0.08/expt_57.7"
 #     elseif Date(2017, 10, 1) ≤ day ≤ Date(2017, 12, 31)
 #         experiment = "https://ncss.hycom.org/thredds/ncss/GLBv0.08/expt_92.9"
+#     elseif Date(2024, 8, 10) ≤ day
+#         experiment = "https://ncss.hycom.org/thredds/ncss/ESPC-D-V02/t3z/$(Year(day).value)"
 #     elseif Date(2018, 1, 1) ≤ day ≤ Date(2018, 12, 31)
 #     end
 #     try
@@ -61,31 +63,69 @@ cd("G:/nino/")
 #     end
 # end
 
-nc4__ = filter(endswith(".nc4"), readdir())
-@threads for K in 1:10
-    nc4_ = nc4__[K:K:end]
-# colnames = ["t"; repeat("i" .* string.(1:10), outer = 15) .* repeat("j" .* string.(1:15), inner = 10)]
-# colnames = ["t"; repeat("i" .* string.(1:10), outer = 8) .* repeat("j" .* string.(1:8), inner = 10)]
-colnames = ["t"; repeat("i" .* string.(1:626), outer = 251) .* repeat("j" .* string.(1:251), inner = 626)]
-# data_ = DataFrame([zeros(length(nc4_)) for _ in eachindex(colnames)], colnames)
-data_ = DataFrame([[] for _ in eachindex(colnames)], colnames)
-for _ in eachindex(nc4_) push!(data_, zeros(length(colnames))) end
-data_.t = Date.(data_.t)
-for k in eachindex(nc4_)
-    try
-        NCDataset(nc4_[k]) do ds
-            df = DataFrame([ds["time"][:] reshape(ds["water_temp"][:, :, 1, :], 251*626, :)'], colnames)
-            # df = DataFrame([ds["time"][:] reshape(ds["water_temp"][:, :, 1, :], 10*8, :)'], colnames)
-            df.t = Date.(df.t)
-            data_[k, :] = combine(groupby(df, :t), names(df, Not(:t)) .=> mean .=> names(df, Not(:t)))[1, :]
-        end
-    catch e
-        @warn "$(nc4_[k])"
-    end
-    CSV.write("data_GLBv0.08_$K.csv", data_)
-end
-end
-tnsr = reshape(Matrix(data_[:, 2:end])', 626, 251, :)
 
-@save "data_tnsr.jld2" tnsr
+nc4_ = filter(endswith(".nc4"), readdir())
+colnames = repeat("i" .* string.(1:626), outer = 251) .* repeat("j" .* string.(1:251), inner = 626)
+
+# ta = DataFrame([zeros(length(nc4_)) for _ in eachindex(colnames)], colnames)
+# ta[!, id_missing] .= missing
+tnsr_ta = Array{Union{Missing, Float64}, 3}(zeros(251, 626, length(nc4_)))
+@showprogress for k in eachindex(nc4_)
+    # try
+        NCDataset(nc4_[k]) do ds
+            # df = reshape(ds["water_temp"][:, :, 1, :], 251*626, :)'
+            # mean_SST = mean.(eachcol(df))
+            # ta[!, ismissing.(mean_SST)] .= missing
+            # ta[k, :] = mean_SST
+            tnsr_ta[:, :, k] = mean(ds["water_temp"][:, :, 1, :], dims = 3)[:, :, 1]'
+        end
+    # catch e
+    #     @warn "$(nc4_[k])"
+    # end
+    # data = [da ta]
+    # CSV.write("data.csv", data)
+end
+da = DataFrame(t = Date.([nc4[6:15] for nc4 in nc4_]))
+ta = DataFrame(reshape(tnsr_ta, 251*626, :)', colnames)
+data = [da ta]
+CSV.write("data.csv", data)
+# tnsr = reshape(Matrix(data[:, 2:end])', 626, 251, :)
+# @save "data_tnsr.jld2" tnsr
 # @load "data_tnsr.jld2"; tnsr
+
+id_missing = [
+    15839
+    16465
+   105328
+   105329
+   105954
+   105955
+]
+
+id_missing = [
+  15839
+ 105329
+ 105954
+ 105955
+ 106578
+ 106580
+ 107829
+ 109708
+ 110334
+ 139107
+]
+
+id_missing = [
+  15839
+  16465
+ 105328
+ 105329
+ 105954
+ 105955
+ 106578
+ 106580
+ 107829
+ 109708
+ 110334
+ 139107
+]

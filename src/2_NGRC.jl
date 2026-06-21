@@ -1,119 +1,128 @@
 include("0_utils.jl")
-# JLD2.@save "G:/seasurface/nino3.4/data.jld2" data T X Y
-@time JLD2.@load "G:/seasurface/nino3.4/data.jld2"
+include("1_datacall.jl")
 include.(readdir("C:/Users/rmsms/OneDrive/lab/DataDrivenModel/core", join=true))
 
-to2(x) = reshape(collect(x), length(Y), length(X))
-datasplit(array, bits) = (array[bits,:], array[.!bits,:])
-recover(matrices, indices) = matrices[:, sortperm(indices)]
+to3(array2) = reshape(Matrix(array2)', length(X), length(Y), :)
+findindex(big, small) = [findfirst(==(x), big) for x in small]
 
-id_missing = findall((eltype.(eachcol(data))) .== Missing)
-function recoverH(matrices, indice)
-    void = fill(missing, size(matrices, 1), length(id_missing))
-    return recover([matrices;; void], [indice; id_missing])
+candy_observer = sort([1,31301,62601,93901,125201,156501,42,31342,62642,93942,125242,156542,84,31384,62684,93984,125284,156584,126,31426,62726,94026,125326,156626,167,31467,62767,94067,125367,156667,209,31509,62809,94109,125409,156709,251,31551,62851,94151,125451,156751,292,31592,62892,94192,125492,156792,334,31634,62934,94234,125534,156834,376,31676,62976,94276,125576,156876,417,31717,63017,94317,125617,156917,459,31759,63059,94359,125659,156959,501,31801,63101,94401,125701,157001,542,31842,63142,94442,125742,157042,584,31884,63184,94484,125784,157084,626,31926,63226,94526,125826,157126])
+trng = Matrix(nino34[(T .< Date(2023)), :])
+vldn = Matrix(nino34[(Date(2023) .≤ T .< Date(2024)), :])
+
+λ_ = exp10.(-6:3)
+result = DataFrame(n_obs = Int64[], bestλ = Float64[], mae = Float64[], id_observer = [])
+if isfile("NGRC_sweep_result.csv") result = CSV.read("NGRC_sweep_result.csv", DataFrame) end
+_id_observer = Int64[]
+for n_obs = 1:12
+    @info "$n_obs phase started"
+    @showprogress @threads for candy = candy_observer
+        id_observer = [_id_observer; candy]
+        if any(Ref(id_observer) .== result.id_observer) continue end
+        id_target = setdiff(axes(nino34, 2), [id_observer; id_missing])
+        vrbl = (id_target, id_observer)
+        P_i = vldn[:, last(vrbl)]
+        P_o = dw(vldn[:, first(vrbl)])
+
+        f_ = ngrc_sweep(trng, vrbl...;)
+        mae_ = zeros(length(λ_))
+        for k in eachindex(λ_)
+            λ = λ_[k]
+            f = NGRC(f_(λ), λ)
+            mae_[k] = mae(f(P_i), P_o)
+        end
+        push!(result, (n_obs, λ_[argmin(mae_)], minimum(mae_), id_observer))
+        # CSV.write("NGRC_sweep_result.csv", result)
+    end
+    presult = result[result.n_obs .== n_obs, :]
+    global _id_observer = presult.id_observer[argmin(presult.mae)]
+end
+result = CSV.read("NGRC_sweep_result.csv", DataFrame)
+result[argmin(result.mae), :]; sort(result.id_observer[argmin(result.mae)])
+
+lstm = CSV.read("lstm_optimal_points_prediction_1.csv", DataFrame)
+lstm = lstm[lstm.date .< Date(2026), :]
+_trng = Matrix(nino34[(T .< Date(2024)), :])
+test = Matrix(nino34[(Date(2025) .≤ T), :])
+
+id_optimal = [209, 31342, 31509, 31634, 63142, 93901, 94026, 94359, 125367, 125659, 125701, 156709]
+id_target = setdiff(axes(nino34, 2), [id_optimal; id_missing])
+vrbl = (id_target, id_optimal)
+_id_optimal = findindex(candy_observer, id_optimal)
+
+ngrc_ = ngrc_sweep(_trng, vrbl...;)
+f = ngrc(_trng, vrbl...; λ = 100)
+
+P_i_ = [Matrix(df[:, 5:2:end]) for df in groupby(lstm, :date)]
+lead_ = ["lead$(lpad(d, 3, "0"))" for d in 1:120]
+pfmc = DataFrame([[] for _ in lead_], lead_)
+@showprogress for k in 1:365
+    actl = test[k .+ (1:120), id_target]
+    pred = f(P_i_[k])
+    push!(pfmc, mean(abs, actl - pred , dims = 2))
+end
+plot(mean.(eachcol(pfmc)), xlabel = "lead", ylabel = "average MAE")
+plot(mean(abs, lstm[:, 4:2:end] - lstm[:, 5:2:end], dims = 2)[:], color = :black)
+
+mae(f(P_i_[k]), test[k .+ (1:120), id_target])
+
+test
+mae(lstm[:, 5:2:end][:, _id_optimal], lstm[:, 4:2:end][:, _id_optimal])
+
+plot(mean(abs2, f(P_i_[30]) - test[30 .+ (1:120), id_target], dims = 2))
+
+allpoints = collect(Base.product(1:626, 1:251))
+candypoints = allpoints[candy_observer]
+optimalpoints = allpoints[id_optimal]
+heatmap(to3(test)[:,:,1])
+scatter!(first.(optimalpoints), last.(optimalpoints), color = :blue, msc = :white)
+
+asdf = f(test[1:365, id_optimal])
+mae(asdf, dw(test[1:365, id_target]))
+qwer = f(lstm[lstm.lead .== 0, 4:2:end][:, _id_optimal])
+mae(qwer, dw(test[1:365, id_target]))
+
+lstm[lstm.lead .== 0,[1; 4:2:end]]
+lstm[lstm.lead .== 0,[1; 4:2:end]][:, 1 .+ [0; _id_optimal]]
+test[:, candy_observer]
+
+test[:, id_optimal]
+aaa = nino34[(Date(2025) .≤ T), candy_observer]
+bbb = lstm[lstm.lead .== 0, 4:2:end]
+for k in eachindex(candy_observer)
+    plot(xlims = [1, 365], title = "observer index: $(candy_observer[k])")
+    plot!(aaa[:,k])
+    plot!(bbb[:,k])
+    png("index = $(k)_observer index $(candy_observer[k]).png")
 end
 
-id_observer = [1, 626, 156501, 157126]
-id_observer = [1:125:626; 156501:125:157126]
-id_target = setdiff(axes(data, 2), [id_missing; id_observer])
-vrbl = (id_target, id_observer)
-
-
-# heatmap(Y, X, to2(data[1, :])', size = (800, 200), yticks = [-5, 0, 5])
-trng, _ = datasplit(data, T .< Date(2023, 1, 1))
-days(day, Δ = 30) = T .∈ Ref(day:Day(1):(day+Day(Δ)))
-trng[:, id_observer]
-@time f = ngrc(trng, vrbl; λ = 1e+3)
-
-
-vtrng = data[Year.(T) .≤ Year(2022), :]
-vinput = data[Year.(T) .== Year(2023), last(vrbl)]
-voutput = data[Year.(T) .== Year(2023), first(vrbl)] |> dw |> Matrix
-err_ = []
-λ_ = logrange(1e-10, 1e+5, 16)
-for λ in λ_
-    g = ngrc(vtrng, vrbl; λ)
-    push!(err_, rmse(voutput, (g(vinput) |> Matrix)))
+_lstm = Matrix(lstm[lstm.lead .== 0, 4:2:end])
+thth = DataFrame(this = [], that = [])
+@showprogress for k in 1:96
+    qwer = mean(abs, test .- _lstm[:, k], dims = 1)
+    qwer[ismissing.(qwer)] .= Inf
+    this = argmin(qwer)[2]
+    that = candy_observer[k]
+    push!(thth, (this, that))
 end
-plot(λ_, err_, xscale = :log10, xticks = λ_[1:2:end], color = :black, legend = :none)
+thth.name = names(lstm[lstm.lead .== 0, 4:2:end])
+CSV.write("index.csv", thth)
+test[:, this]
+names(lstm[lstm.lead .== 0, 4:2:end])
 
+[test[:, 10292] _lstm[:, 2]]
+[test[:, 20834] _lstm[:, 3]]
+[test[:, 31376] _lstm[:, 4]]
+[test[:, 41667] _lstm[:, 5]]
 
-bit_period = days(Date(2023, 08, 31), 91)
-osrv = dw(data[bit_period, last(vrbl)]) |> Matrix
-prdt = f((1 .+ 0.01rand([-1, 1], 92, 4)) .* Matrix(data[bit_period, last(vrbl)]))
-@time actl = dw(data[bit_period, first(vrbl)]) |> Matrix
-sqrt(mean(abs2, (actl - prdt)))
+allpoints[[10292, 20834, 31376]]
 
-rcvdA = recoverH([actl;; osrv], [id_target; id_observer])
-rcvdP = recoverH([prdt;; osrv], [id_target; id_observer])
-plot(
-    heatmap(Y, X, to2(rcvdA[11, :])'),
-    heatmap(Y, X, to2(rcvdP[11, :])'),
-    clims = extrema(skipmissing([rcvdA; rcvdP])),
-    layout = (2, 1)
-)
+thth.this
+wrongpoints = allpoints[thth.this]
 
+heatmap(to3(test)[:,:,1])
+scatter!(first.(candypoints), last.(candypoints), legend = :none, color = :white)
 
-"""''''''''''''''''''''''''''''''''''''
+heatmap(to3(test)[:,:,1])
+scatter!(first.(wrongpoints), last.(wrongpoints), legend = :none, color = :white)
 
-            LSTM observer
-
-''''''''''''''''''''''''''''''''''''"""
-
-obsv = CSV.read("lstm_prediction30.csv", DataFrame)
-# names(obsv)[[4, 24, 6, 26]]
-# names(obsv)[[4:4:24; 6:4:26]]
-
-lead30 = [df[:, [4, 24, 6, 26]] for df in groupby(obsv, :date)]
-lead30 = [df[:, [4:4:24; 6:4:26]] for df in groupby(obsv, :date)]
-# read30 = [data[t0 .+ (1:30), id_observer] for t0 in findall(Date(2023, 1, 1) .≤ T .≤ Date(2023, 12, 31))]
-
-rmseover30 = []
-rmseat30 = []
-days365 = findall(Date(2023, 1, 1) .≤ T .≤ Date(2023, 12, 31))
-for tk in eachindex(days365)
-    actl = Matrix(data[days365[tk] .+ (1:30), id_target])
-    # prdt = f(lead30[tk])
-    prdt = f(data[days365[tk] .+ (0:30), id_observer])
-    push!(rmseover30, rmse(actl, prdt))
-    push!(rmseat30, rmse(actl[end, :], prdt[end, :]))
-end
-
-sargs = (; legend = :none, color = :black, ylims = [0, 1.3], ylabel = "RMSE")
-scatter(T[1462:1826], rmseover30; sargs...)
-mean(rmseover30)
-scatter(T[1462:1826], rmseat30; sargs...)
-mean(rmseat30)
-
-
-[names(obsv[:, [4:4:24; 6:4:26]]) names(data[:, id_observer])]
-Random.seed!(42)
-id_ = [
-    [1, 626, 156501, 157126],
-    [1:125:626; 156501:125:157126],
-    [72293, 72313, 84813, 84833],
-    sort(setdiff([id_missing .- 1; id_missing .+ 1], id_missing)),
-    1:(626*25):157126,
-    626:(626*25):157126,
-    rand(1:157126, 4),
-    rand(1:157126, 12),
-]
-title_ = [
-    "corner4",
-    "corner12",
-    "center",
-    "island",
-    "east",
-    "west",
-    "rand4",
-    "rand12",
-]
-    
-for k in 1:8
-    x_ = (whereis(id_[k]) .* (1:626))[whereis(id_[k])]
-    y_ = ((1:251)' .* whereis(id_[k]))[whereis(id_[k])]
-    scatter(x_, y_, title = "$k: $(title_[k])", size = [800, 200], xlims = [-10, 636], ylims = [-10, 260], legend = :none, color = :black, xticks = [0, 626], yticks = [0, 251])
-    png("$(k)_$(title_[k]).png")
-end
-
-sort(unique([id_...;]))
+CSV.write("optimal_points.csv", [DataFrame(T = T) nino34[:, id_optimal]])

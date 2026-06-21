@@ -8,8 +8,12 @@ required_pkg = filter(p -> isnothing(Base.find_package(p)), unique(packages))
 if !isempty(required_pkg)
     Pkg.add(required_pkg)
 end
-@time eval(Meta.parse("using $(join(unique(packages), ", "))"))
-println("All packages loaded")
+@time "📚 packages loaded" eval(Meta.parse("using $(join(unique(packages), ", "))"))
+
+import Base.-
+-(a::AbstractDataFrame, b::AbstractDataFrame) = Matrix(a) - Matrix(b)
+-(a::AbstractDataFrame, b::AbstractMatrix) = Matrix(a) - b
+-(a::AbstractMatrix, b::AbstractDataFrame) = a - Matrix(b)
 
 function variablenames(df)
     names_df = names(df)
@@ -19,18 +23,15 @@ function variablenames(df)
         throw(ArgumentError("DataFrame must have an even number of columns"))
     end
 end
-function frequency(inventory)
-    freq = Dict{eltype(inventory), Int64}()
-    for item in inventory
-        freq[item] = get(freq, item, 0) + 1
-    end
-    return freq
-end
-id_flip(ids) = setdiff(1:150, ids)
-# whereis(ids) = reshape([k ∈ ids for k in 1:150], 10, 15)
-whereis(ids) = reshape([k ∈ ids for k in 1:157126], 626, 251)
 tensor2dataframe(tnsr) = DataFrame(stack(vec(eachslice(tnsr, dims = (1,2)))), :auto)
 dataframe2tensor(df) = reshape(Matrix(df)', 10, 15, :)
+
+recover(matrices, indices) = matrices[:, sortperm(indices)]
+function recoverH(matrices, indice = [])
+    matrices = Matrix(matrices)
+    void = fill(missing, size(matrices, 1), length(id_missing))
+    return recover([matrices;; void], [indice; id_missing])
+end
 
 
 """'''''''''''''''''''''''''''''''''''''''''''''

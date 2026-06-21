@@ -9,67 +9,56 @@ recover(matrices, indices) = matrices[:, sortperm(indices)]
 
 id_missing = findall((eltype.(eachcol(data))) .== Missing)
 function recoverH(matrices, indice)
+    matrices = Matrix(matrices)
     void = fill(missing, size(matrices, 1), length(id_missing))
     return recover([matrices;; void], [indice; id_missing])
 end
 id_ovserver = []
 id_target = setdiff(axes(data, 2), [id_missing; id_ovserver])
 
-# 가장 뒷줄에 t = 1, ... 추가
-_data = [data DataFrame(t = axes(data, 1))]
-trng, test = datasplit(_data, T .< Date(2023, 1, 1));
+trng, test = datasplit(data, T .< Date(2023, 1, 1));
 
-@time eofed = eof(Matrix(trng)[:, [id_target; end]])
-eof_transform(xx, nu) = xx / (diagm(eofed.Σ[1:nu]) * eofed.V[:, 1:nu]')
-eof_transform(Matrix(test[1:2, [id_target; end]]), 3)
+@time eofed = eof(Matrix(trng)[:, id_target])
+eof2Z(uu, nu) = uu * (diagm(eofed.Σ[1:nu]) * eofed.V[:, 1:nu]')
+eof2U(zz, nu) = zz / (diagm(eofed.Σ[1:nu]) * eofed.V[:, 1:nu]')
 plot(cumsum(eofed.Σ ./ sum(eofed.Σ)), xscale = :log10, label = :none, color = :black)
 
-# N = 3까지 사용
-U = eofed.U[:, 1:3]
-dfU = add_diff(DataFrame(U, :auto); method = :TVD)
+U = [DataFrame(t = axes(trng, 1) ./ 365) DataFrame(eofed.U[:, 1:3], :auto)]
+dfU = [
+    add_diff(DataFrame(t = axes(trng, 1) ./ 365); method = :FDM) add_diff(DataFrame(eofed.U[:, 1:3], :auto); method = :TVD)[1:(end-1), :]
+]
+dfU = dfU[:, sortperm(names(dfU))]
 vrbl = half(names(dfU))
+# plot([plot(u) for u in eachcol(U)]...,layout = (:, 1), legend = :none)
+cnfg = cook(last(vrbl); poly = 0:2, trig = [2])[[1,3,4,5,10,11,12,13,14,15,16,17], :]
+f = SINDy(dfU, vrbl, cnfg; λ = 1e-5); f |> print
 
-plot([plot(u) for u in eachcol(U)]...,layout = (:, 1), legend = :none)
-
-f = SINDy(dfU, vrbl, cook(last(vrbl); poly = 0:2)); f |> print
-tend = 300
-@time V = solve(f, collect(dfU[end, last(vrbl)]), 0:1e-2:tend)[1:100:end, :][2:end, :];
-futureU = eof_transform(Matrix(test[1:300, [id_target; end]]), 3)
-plt_l_ = []
-for j in axes(V, 2)
-    U = futureU
-    plt_l = plot(U[1:tend, j], ylabel = "EOF$j", label = "EOF")
-    plot!(plt_l, V[:, j], label = "SINDy")
-    push!(plt_l_, plt_l)
-end
-plot(plt_l_..., layout = (:, 1), legend = :none, size = [600, 200length(plt_l_)])
-
-foo = recoverH(eofed(V)[:, Not(end)], id_target)
-heatmap(Y, X, to2(foo[30, :])', size = [800, 200])
-
-actl = Matrix(test[1:tend, id_target]);
-prdt = Matrix(foo[1:end, id_target]);
-
-plot(sqrt.(mean.(abs2, eachrow(actl - prdt))), label = :none, color = :black)
-
-# 아래부터는 생각보다 EOF로 보는 손실이 큰 것 확인
-
-plot(sqrt.(mean.(abs2, eachrow(eofed(eofed.U[:, 1:3])[:, Not(end)] - Matrix(trng[:, id_target])))), color = :black, label = :none)
-
-(eofed.Σ ./ sum(eofed.Σ)) |> cumsum
-
-# N = 5까지 사용
-dfU = add_diff(DataFrame(eofed.U[:, 1:5], :auto); method = :TVD)
-vrbl = half(names(dfU))
-f = SINDy(dfU, vrbl, cook(last(vrbl); poly = 0:2), λ = 1e-3); f |> print
 tend = 100
-@time V = solve(f, collect(dfU[end, last(vrbl)]), 0:1e-1:tend)[1:10:end, :][2:end, :]
-futureU = eof_transform(Matrix(test[1:300, [id_target; end]]), 5)
-plt_l_ = []
-for j in axes(futureU, 2)
-    U = futureU
-    plt_l = plot(U[1:tend, j], ylabel = "EOF$j", label = "EOF")
-    plot!(plt_l, V[:, j], label = "SINDy")
-    push!(plt_l_, plt_l)
+# @time Uhat = solve(f, collect(dfU[end, last(vrbl)]), 0:1e-2:tend)[1:100:end, 2:end];
+# Xhat = recoverH(eof2Z(Uhat, 3), id_target)
+# stack(to2.(eachrow(Xhat)), dims = 3)
+# heatmap(Y, X, to2(Xhat[20, :])')
+resultnames = ["t0"; "MAE" .* string.(0:100)]
+resultSINDy = DataFrame([[] for _ in resultnames], resultnames)
+@showprogress for t0 = 1:365
+    u0 = [t0/365; vec(eof2U(collect(test[t0, id_target])', 3))]
+    uhat = solve(f, u0, 0:1e-2:tend)[1:100:end, 2:end]
+    Xhat = recoverH(eof2Z(uhat, 3), id_target)
+    A2D = stack(to2.(eachrow(recoverH(test[t0 .+ (0:tend), id_target], id_target))), dims = 3)
+    P2D = stack(to2.(eachrow(Xhat)), dims = 3)
+    E2D = A2D - P2D
+
+    errtend = [mean(abs, skipmissing(e2d)) for e2d in eachslice(E2D, dims = 3)]
+    push!(resultSINDy, [t0; errtend])
+    clims = extrema(skipmissing([A2D P2D]))
+    plot(
+        heatmap(A2D[:,:,30]'; clims, title = "Actual t0+30"),
+        heatmap(P2D[:,:,30]'; clims, title = "Predicted t0+30"),
+        heatmap(E2D[:,:,30]'; color = :balance),
+        plot(0:100, errtend, color = :black, label = "MAE", ylims = [0, 1]),
+        size = [600, 600], layout = (:, 1), plot_title = "t0 = $t0"
+    )
+    png("SINDy+EOF_t0_$(lpad(t0, 3, '0')).png")
 end
-plot(plt_l_..., layout = (:, 1), legend = :none, size = [600, 200length(plt_l_)])
+# CSV.write("resultSINDy.csv", resultSINDy)
+plot(0:100, mean.(eachcol(resultSINDy))[2:end], xlabel = "lead", color = :black, label = "average MAE", xticks = 0:30:90, ylims = [0, 1])
