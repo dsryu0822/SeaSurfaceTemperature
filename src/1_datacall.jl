@@ -10,5 +10,5 @@ using JLD2, DataFrames, CSV, Plots
 # nino34[:, id_missing] .= missing
 # JLD2.@save "G:/seasurface/nino3.4/data.jld2" X Y T nino34 id_missing
 
-@time "✅ nino3.4 jld2" JLD2.@load "G:/seasurface/nino3.4/data.jld2"
+@time "✅ nino3.4 jld2" JLD2.@load "../nino3.4/data.jld2"
 
