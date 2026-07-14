@@ -1,66 +1,126 @@
 ROOT = ifelse(Sys.KERNEL == :NT, "C:/Users/rmsms/OneDrive/lab/", "/home/chaos")
-include.(readdir("$(ROOT)/DataDrivenModel/core", join=true)[[1,2,6]])
+include.(readdir("$(ROOT)/DataDrivenModel/core", join=true)[[1,2,3,6]])
 include("0_utils.jl")
 include("1_datacall.jl")
-
-trng = Matrix(nino34[(Date(2021) .≤ T .< Date(2024)), :])
-test = Matrix(nino34[(Date(2025) .≤ T), id_target])
 
 id_ovserver = []
 id_target = setdiff(axes(nino34, 2), [id_missing; id_ovserver])
 rcv(x) = recover(x, (id_target, []))
 
-@time eofed = eof(Matrix(trng)[:, id_target])
+nino34mean = mean(Matrix(nino34[:, id_target]), dims = 2)
+plot(2019 .+ ((1:length(nino34mean))/365), nino34mean, xticks = 2019:2027, lw = 2, color = :black, alpha = 0.5, size = [800, 200])
+vspan!([2023, 2024], color = 1, alpha = 0.2)
+vspan!([2024, 2025], color = 2, alpha = 0.2)
+vspan!([2025, 2026], color = 3, alpha = 0.2)
+
+# plot(T, mean(Matrix(nino34[:, id_target]), dims = 2), label = "mean", color = :black, xticks = :years)
+trng = Matrix(nino34[(Date(2019) .≤ T .< Date(2023)), id_target])
+
+@time eofed = eof(trng)
 eof2Z(uu, nu) = uu * (diagm(eofed.Σ[1:nu]) * eofed.V[:, 1:nu]')
 eof2U(zz, nu) = zz / (diagm(eofed.Σ[1:nu]) * eofed.V[:, 1:nu]')
 plot(cumsum(eofed.Σ ./ sum(eofed.Σ)), xscale = :log10, label = :none, color = :black)
 
 # U = DataFrame(moving_average.(eachcol(eofed.U[:, 1:3]), 30), ["u1", "u2", "u3"])
-U = [DataFrame(t = axes(trng, 1) ./ 365) DataFrame(eofed.U[:, 1:3], :auto)]
+U = [DataFrame(T = axes(trng, 1) ./ 365) DataFrame(eofed.U[:, 1:3], :auto)]
 dfU = [
-    add_diff(DataFrame(t = axes(trng, 1) ./ 365); method = :FDM) add_diff(DataFrame(eofed.U[:, 1:3], :auto); method = :TVD)[1:(end-1), :]
+    add_diff(DataFrame(T = axes(trng, 1) ./ 365); method = :FDM) add_diff(DataFrame(eofed.U[:, 1:3], ["u$j" for j in 1:3]); method = :TVD)[1:(end-1), :]
 ]
-dfU = dfU[:, sortperm(names(dfU))]
-vrbl = half(names(dfU))
+dfU = dfU[:, [:T, :u1, :u2, :u3, :dT, :du1, :du2, :du3]]
+vrbl = reverse(half(names(dfU)))
 cnfg = cook(vrbl; poly = 0:2, trig = [2])[[1,3,4,5,10,11,12,13,14,15,16,17], :]
+
 f = SINDy(dfU, vrbl, cnfg; λ = 1e-4); f |> print
-V = ssolve(f, collect(dfU[1, last(vrbl)]), 0:1e-2:300)[1:100:end, 2:end]
-# plot([plot(v) for v in eachcol(V)]...,layout = (:, 1), legend = :none)
+
+"""''''''''''''''''''''''''''''''''''''''''''''''''''
+
+                        fitting
+
+''''''''''''''''''''''''''''''''''''''''''''''''''"""
+# anim = @animate for tk0 = 1:10:1350
+#     print("\r tk0 = $tk0 / 1350")
+tk0 = 1
+# V = ssolve(f, dfU[[tk0], last(vrbl)], dfU.T[tk0]:1e-2:(dfU.T[tk0]+120))[1:100:end, 2:end]
+V = ssolve(f, dfU[[tk0], last(vrbl)], dfU.T[tk0]:1e-2:nrow(dfU))[1:100:end, 2:end]
+ylabel = [L"T", L"u_1", L"u_2", L"u_3"]
 plt_ = [plot() for j in axes(U, 2)]
 for j in eachindex(plt_)
-    plot!(plt_[j], U[:, j], label = "EOF", color = :black)
-    plot!(plt_[j], V[:, j], label = "SINDy+EOF", color = :red)
+    plot!(plt_[j], U.T, U[:, j], label = "EOF", color = :black, alpha = 0.5, lw = 2, ylabel = ylabel[j])
+    plot!(plt_[j], V.T, V[:, j], label = "SINDy+EOF", color = :red, alpha = 0.5, lw = 2)
 end
-plot(plt_..., layout = (:, 1), legend = :none, size = [600, 600], xticks = 0:365:2000)
+plot(plt_..., layout = (:, 1), legend = :none, size = [600, 600], xticks = 0:1:10)
+# end
+@time gif(anim, "SINDy+EOF_fitting.gif", fps = 60);
 
-V = ssolve(f, collect(dfU[1, last(vrbl)]), 0:1e-2:10000)[900000:100:end, 2:end]
-plot(V[:, 2], V[:, 3], V[:, 4], color = :red)
-plot(V[:, 2], color = :red)
+"""''''''''''''''''''''''''''''''''''''''''''''''''''
 
+                    limit cycle
+
+''''''''''''''''''''''''''''''''''''''''''''''''''"""
+V = ssolve(f, dfU[[1], last(vrbl)], 0000:1e-2:1460)
+V = ssolve(f, dfU[[1], last(vrbl)], 2000:1e-2:3000)
+plot(V.u1, V.u2, V.u3, color = :red, legend = :none, size = [400, 400], label = :none, xlabel = ylabel[2], ylabel = ylabel[3], zlabel = ylabel[4])
+scatter!(V.u1[[end]], V.u2[[end]], V.u3[[end]], color = :red, msc = :white)
+
+
+"""''''''''''''''''''''''''''''''''''''''''''''''''''
+
+                performance evaluation
+
+''''''''''''''''''''''''''''''''''''''''''''''''''"""
+year0 = 2023
+test = Matrix(nino34[(Date(year0) .≤ T), id_target])
+_test = DataFrame(eof2U(test, 3), ["u1", "u2", "u3"])
+_test = [DataFrame(T = (1:nrow(_test))/365) _test]
 tend = 120
 # Uhat = ssolve(f, collect(dfU[end, last(vrbl)]), 0:1e-2:tend)[1:100:end, 3:end];
 # Xhat = rcv(eof2Z(Uhat, 3)[1, :])
 # heatmap(Y, X, to2(Xhat))
-resultnames = "lead" .* string.(0:120)
-resultSINDy = DataFrame([[] for _ in resultnames], resultnames)
-@showprogress for t0 = 1:365
-    u0 = [t0/365; vec(eof2U(test[t0, :]', 3))]
-    uhat = ssolve(f, u0, 0:1e-2:tend)[1:100:end, 3:end]
+resultnames = "lead" .* string.(0:tend)
+resultSINDy = DataFrame([zeros(length(T[Date(year0) .≤ T])) for _ in resultnames], resultnames)
+resultSINDy = [DataFrame(date = T[Date(year0) .≤ T]) resultSINDy]
+@showprogress @threads for t0 = eachindex(T[Date(year0) .≤ T])
+    uhat = ssolve(f, _test[[t0], :], 0:1e-2:tend)[1:100:end, 3:end]
     actl = test[t0 .+ (0:tend), :]
-    zhat = eof2Z(uhat, 3)
-    push!(resultSINDy, mae(actl, zhat, dims = 2)[:])
-
-    # errtend = [mean(abs, skipmissing(e2d)) for e2d in eachslice(E2D, dims = 3)]
-    # push!(resultSINDy, [t0; errtend])
-    # clims = extrema(skipmissing([A2D P2D]))
-    # plot(
-    #     heatmap(A2D[:,:,30]'; clims, title = "Actual t0+30"),
-    #     heatmap(P2D[:,:,30]'; clims, title = "Predicted t0+30"),
-    #     heatmap(E2D[:,:,30]'; color = :balance),
-    #     plot(0:100, errtend, color = :black, label = "MAE", ylims = [0, 1]),
-    #     size = [600, 600], layout = (:, 1), plot_title = "t0 = $t0"
-    # )
-    # png("SINDy+EOF_t0_$(lpad(t0, 3, '0')).png")
+    zhat = eof2Z(Matrix(uhat), 3)
+    resultSINDy[t0, 2:end] = mae(actl, zhat, dims = 2)
 end
-plot(0:tend, mean.(eachcol(resultSINDy)), xlabel = "lead", color = :black, label = "average MAE", xticks = 0:30:120, ylims = [0, 1.1])
+resultSINDy = resultSINDy[.!iszero.(resultSINDy[:, 2]), :]
 CSV.write("resultSINDy.csv", resultSINDy)
+
+resultSINDy = CSV.read("resultSINDy3years.csv", DataFrame)
+# surface(0:120, _test.T[1:1121], Matrix(resultSIDy[:, 2:end]), xlabel = "lead", ylabel = "ic", size = [400, 400])
+plot(legend = true, xlabel = "lead", ylabel = "average MAE", xticks = 0:30:180, ylims = [0.2, 1.2])
+plot!(0:tend, mean.(eachcol(resultSINDy[Year(2023) .≤ Year.(resultSINDy.date) .< Year(2024), Not(1)])), lw = 2, α = 0.5, color = 1, label = "2023")
+plot!(0:tend, mean.(eachcol(resultSINDy[Year(2024) .≤ Year.(resultSINDy.date) .< Year(2025), Not(1)])), lw = 2, α = 0.5, color = 2, label = "2024")
+plot!(0:tend, mean.(eachcol(resultSINDy[Year(2025) .≤ Year.(resultSINDy.date) .< Year(2026), Not(1)])), lw = 2, α = 0.5, color = 3, label = "2025")
+plot!(0:tend, mean.(eachcol(resultSINDy[Year(2023) .≤ Year.(resultSINDy.date) .< Year(2026), Not(1)])), lw = 2, α = 0.5, color = :black, label = "2023-2026")
+
+
+"""''''''''''''''''''''''''''''''''''''''''''''''''''
+
+                    equation analysis
+
+''''''''''''''''''''''''''''''''''''''''''''''''''"""
+f_ = [SINDy(dfU[Not(i), :], vrbl, cnfg; λ = 1e-4) for i in 1:nrow(dfU)]
+m_ = [f.matrix for f in f_]
+plot(
+    heatmap(mean(m_), xmirror = true, yflip = true, colorbar = true),
+    heatmap(std(m_), xmirror = true, yflip = true, colorbar = true),
+)
+
+"""''''''''''''''''''''''''''''''''''''''''''''''''''
+
+                    embeded points
+
+''''''''''''''''''''''''''''''''''''''''''''''''''"""
+
+plot(
+    scatter(_test.u1, _test.u2, _test.u3, msw = 0, alpha = 0.5, color = ceil.(Int64, _test.T)),
+    scatter(_test.u1, _test.u2, msw = 0, alpha = 0.5, color = ceil.(Int64, _test.T)),
+    scatter(_test.u2, _test.u3, msw = 0, alpha = 0.5, color = ceil.(Int64, _test.T)),
+    scatter(_test.u1, _test.u3, msw = 0, alpha = 0.5, color = ceil.(Int64, _test.T)),
+    layout = (2, 2), size = [800, 600]
+)
+
+
