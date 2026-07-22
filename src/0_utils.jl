@@ -73,7 +73,7 @@ end
 
 
 to3(array2) = reshape(Matrix(array2)', length(X), length(Y), :)
-to2(array1) = reshape(array1, length(X), length(Y))
+to2(array1) = reshape(Matrix(array1)', length(X), length(Y))
 findindex(big, small) = [findfirst(==(x), big) for x in small]
 function recover(vector, variables)
     filled = Array{Union{Float64, Missing}}(missing, ncol(nino34))
