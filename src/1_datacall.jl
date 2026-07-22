@@ -10,7 +10,11 @@ using JLD2, DataFrames, CSV, Plots
 # nino34[:, id_missing] .= missing
 # JLD2.@save "G:/seasurface/nino3.4/data.jld2" X Y T nino34 id_missing
 mm = Plots.mm
-@time "✅ nino3.4 jld2" JLD2.@load "G:/seasurface/nino3.4/data.jld2"
+if Sys.KERNEL == :NT
+    @time "✅ nino3.4 jld2" JLD2.@load "G:/seasurface/nino3.4/data.jld2"
+else
+    @time "❌ nino3.4 jld2" JLD2.@load "/home/chaos/g/seasurface/nino3.4/data.jld2"
+end
 # @time "✅ nino3.4 jld2" JLD2.@load "G:/seasurface/nino3.4/datam.jld2"
 
 # """''''''''''''''''''''''''''''''''''''''''''''''''''
