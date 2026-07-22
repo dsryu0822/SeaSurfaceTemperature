@@ -10,11 +10,16 @@ using JLD2, DataFrames, CSV, Plots
 # nino34[:, id_missing] .= missing
 # JLD2.@save "G:/seasurface/nino3.4/data.jld2" X Y T nino34 id_missing
 mm = Plots.mm
-if Sys.KERNEL == :NT
-    @time "✅ nino3.4 jld2" JLD2.@load "G:/seasurface/nino3.4/data.jld2"
-else
-    @time "❌ nino3.4 jld2" JLD2.@load "/home/chaos/g/seasurface/nino3.4/data.jld2"
+@time jld2file = try
+    JLD2.load("G:/seasurface/nino3.4/data.jld2")
+catch e
+    JLD2.load("/home/chaos/g/seasurface/nino3.4/data.jld2")
 end
+X = jld2file["X"]
+Y = jld2file["Y"]
+D = jld2file["D"]
+nino34 = jld2file["nino34"]
+id_missing = jld2file["id_missing"]
 # @time "✅ nino3.4 jld2" JLD2.@load "G:/seasurface/nino3.4/datam.jld2"
 
 # """''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -30,4 +35,3 @@ end
 # plot!(2019 .+ ((1:length(μ))/365), μ - σ, fillrange = μ .+ σ, fillcolor = :black, fillalpha = 0.2, label = :none, alpha = 0)
 # vspan!([2019, 2025], color = 1, alpha = 0.2)
 # vspan!([2025, 2027], color = 2, alpha = 0.2)
-
