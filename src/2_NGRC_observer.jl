@@ -46,9 +46,10 @@ begin
                 fP_i = f(P_i)
                 mae_[k] = mae(fP_i, P_o)
             end
-            push!(rslt, (n_obs, λ_[argmin(mae_)], minimum(mae_), id_observer))
+            rslt[k, :] = [n_obs, λ_[argmin(mae_)], minimum(mae_), id_observer]
             CSV.write("NGRC_sweep_result.csv", [result; rslt])
         end
+        result = [result; rslt]
         result = result[.!iszero.(result.n_obs), :]
         CSV.write("NGRC_sweep_result.csv", result)
         presult = result[result.n_obs .== n_obs, :]
