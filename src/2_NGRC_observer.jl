@@ -28,7 +28,7 @@ begin
     for n_obs = 1:15
         @info "$n_obs phase started"
         rslt = DataFrame(n_obs = zeros(Int64, 96), bestλ = zeros(Float64, 96), mae = zeros(Float64, 96), id_observer = fill([], 96))
-        @showprogress for i = eachindex(candy_observer)
+        @showprogress @threads for i = eachindex(candy_observer)
             candy = candy_observer[i]
             id_observer = [_id_observer; candy]
             if (length(unique(id_observer)) .!= length(id_observer)) continue end
@@ -40,7 +40,7 @@ begin
             f_ = ngrc_sweep(trng, vrbl...;)
             mae_ = zeros(length(λ_))
             rmse_ = zeros(length(λ_))
-            @threads for k in eachindex(λ_)
+            for k in eachindex(λ_)
                 λ = λ_[k]
                 f = NGRC(f_(λ), λ)
                 fP_i = f(P_i)
