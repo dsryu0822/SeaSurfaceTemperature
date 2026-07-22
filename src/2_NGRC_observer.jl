@@ -27,7 +27,9 @@ begin
     end
     for n_obs = 1:15
         @info "$n_obs phase started"
-        @showprogress @threads for candy = candy_observer
+        rslt = DataFrame(n_obs = zeros(Int64, 96), bestλ = zeros(Float64, 96), mae = zeros(Float64, 96), id_observer = fill([], 96))
+        @showprogress for i = eachindex(candy_observer)
+            candy = candy_observer[i]
             id_observer = [_id_observer; candy]
             if (length(unique(id_observer)) .!= length(id_observer)) continue end
             id_target = setdiff(axes(nino34, 2), [id_observer; id_missing])
@@ -38,15 +40,17 @@ begin
             f_ = ngrc_sweep(trng, vrbl...;)
             mae_ = zeros(length(λ_))
             rmse_ = zeros(length(λ_))
-            for k in eachindex(λ_)
+            @threads for k in eachindex(λ_)
                 λ = λ_[k]
                 f = NGRC(f_(λ), λ)
                 fP_i = f(P_i)
                 mae_[k] = mae(fP_i, P_o)
             end
-            push!(result, (n_obs, λ_[argmin(mae_)], minimum(mae_), id_observer))
-            CSV.write("NGRC_sweep_result.csv", result)
+            push!(rslt, (n_obs, λ_[argmin(mae_)], minimum(mae_), id_observer))
+            CSV.write("NGRC_sweep_result.csv", [result; rslt])
         end
+        result = result[.!iszero.(result.n_obs), :]
+        CSV.write("NGRC_sweep_result.csv", result)
         presult = result[result.n_obs .== n_obs, :]
         _id_observer = presult.id_observer[argmin(presult.mae)]
     end
