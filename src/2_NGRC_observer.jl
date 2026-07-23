@@ -7,8 +7,8 @@ candy_observer = [reshape(axes(nino34, 2), 251, 626)[i,j]
     for i in round.(Int64, range(1, 251, length = 6)),
         j in round.(Int64, range(1, 626, length = 16))] |> vec
 
-trng = Float32.(Matrix(nino34[(D .< Date(2024)), Not(id_missing)]))
-vldn = Float32.(Matrix(nino34[(Date(2024) .≤ D .< Date(2025)), Not(id_missing)]))
+trng = Float32.(Matrix(nino34[(D .< Date(2024)), :]))
+vldn = Float32.(Matrix(nino34[(Date(2024) .≤ D .< Date(2025)), :]))
 function λ_sweep()
     λ_ = exp10.(-3:6)
     result = DataFrame(n_obs = Int64[], bestλ = Float64[], mae = Float64[], id_observer = [])
