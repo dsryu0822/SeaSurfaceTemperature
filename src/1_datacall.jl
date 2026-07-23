@@ -22,6 +22,8 @@ nino34 = jld2file["nino34"]
 id_missing = jld2file["id_missing"]
 # @time "✅ nino3.4 jld2" JLD2.@load "G:/seasurface/nino3.4/datam.jld2"
 
+# default(framestyle = :box, legend = :none)
+
 # """''''''''''''''''''''''''''''''''''''''''''''''''''
 
 #                         EDA
@@ -29,7 +31,6 @@ id_missing = jld2file["id_missing"]
 # ''''''''''''''''''''''''''''''''''''''''''''''''''"""
 # μ = mean(Matrix(nino34[:, id_target]), dims = 2)
 # σ = std(Matrix(nino34[:, id_target]), dims = 2)
-# default(framestyle = :box, legend = :none)
 # plot(legend = :none, size = [600, 200], xlims = [2019, 2026.4])
 # plot!(2019 .+ ((1:length(μ))/365), μ, xticks = 2019:2027, lw = 2, color = :black, alpha = 0.5)
 # plot!(2019 .+ ((1:length(μ))/365), μ - σ, fillrange = μ .+ σ, fillcolor = :black, fillalpha = 0.2, label = :none, alpha = 0)
