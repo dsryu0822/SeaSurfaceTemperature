@@ -80,3 +80,12 @@ function recover(vector, variables)
     filled[first(variables)] .= vector
     return filled
 end
+
+"""''''''''''''''''''''''''''''''''''''''''''''''''''
+
+                   custom colormap
+
+''''''''''''''''''''''''''''''''''''''''''''''''''"""
+
+RdYlBu_r = cgrad(:RdYlBu, rev = true)
+vanimo_r = cgrad(:vanimo, rev = true)
