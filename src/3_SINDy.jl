@@ -7,28 +7,29 @@ id_ovserver = []
 id_target = setdiff(axes(nino34, 2), [id_missing; id_ovserver])
 rcv(x) = recover(x, (id_target, []))
 
-nino34mean = mean(Matrix(nino34[:, id_target]), dims = 2)
-plot(2019 .+ ((1:length(nino34mean))/365), nino34mean, xticks = 2019:2027, lw = 2, color = :black, alpha = 0.5, size = [800, 200])
-vspan!([2023, 2024], color = 1, alpha = 0.2)
-vspan!([2024, 2025], color = 2, alpha = 0.2)
-vspan!([2025, 2026], color = 3, alpha = 0.2)
 
 # plot(T, mean(Matrix(nino34[:, id_target]), dims = 2), label = "mean", color = :black, xticks = :years)
 trng = Matrix(nino34[(Date(2019) .≤ T .< Date(2023)), id_target])
+μ = mean(trng)
+trng = trng .- μ
 
 @time eofed = eof(trng)
 eof2Z(uu, nu) = uu * (diagm(eofed.Σ[1:nu]) * eofed.V[:, 1:nu]')
 eof2U(zz, nu) = zz / (diagm(eofed.Σ[1:nu]) * eofed.V[:, 1:nu]')
 plot(cumsum(eofed.Σ ./ sum(eofed.Σ)), xscale = :log10, label = :none, color = :black)
 
-# U = DataFrame(moving_average.(eachcol(eofed.U[:, 1:3]), 30), ["u1", "u2", "u3"])
-U = [DataFrame(T = axes(trng, 1) ./ 365) DataFrame(eofed.U[:, 1:3], :auto)]
+# U = [DataFrame(T = axes(trng, 1) ./ 365) DataFrame(eofed.U[:, 1:3], :auto)]
 dfU = [
     add_diff(DataFrame(T = axes(trng, 1) ./ 365); method = :FDM) add_diff(DataFrame(eofed.U[:, 1:3], ["u$j" for j in 1:3]); method = :TVD)[1:(end-1), :]
 ]
 dfU = dfU[:, [:T, :u1, :u2, :u3, :dT, :du1, :du2, :du3]]
+# dfU = add_diff(DataFrame(eofed.U[:, 1:3], ["u$j" for j in 1:3]); method = :TVD)[1:(end-1), :]
+# dfU = dfU[:, [:u1, :u2, :u3, :du1, :du2, :du3]]
+
 vrbl = reverse(half(names(dfU)))
 cnfg = cook(vrbl; poly = 0:2, trig = [2])[[1,3,4,5,10,11,12,13,14,15,16,17], :]
+# cnfg = cook(vrbl; trig = 1:5)
+# cnfg = cook(vrbl; poly = 0:2)
 
 f = SINDy(dfU, vrbl, cnfg; λ = 1e-4); f |> print
 
@@ -41,8 +42,10 @@ f = SINDy(dfU, vrbl, cnfg; λ = 1e-4); f |> print
 #     print("\r tk0 = $tk0 / 1350")
 tk0 = 1
 # V = ssolve(f, dfU[[tk0], last(vrbl)], dfU.T[tk0]:1e-2:(dfU.T[tk0]+120))[1:100:end, 2:end]
-V = ssolve(f, dfU[[tk0], last(vrbl)], dfU.T[tk0]:1e-2:nrow(dfU))[1:100:end, 2:end]
+# V = ssolve(f, dfU[[tk0], last(vrbl)], dfU.T[tk0]:1e-2:nrow(dfU))[1:100:end, 2:end]
+V = ssolve(f, dfU[[tk0], last(vrbl)], 0:1e-2:nrow(dfU))[1:100:end, 2:end]
 ylabel = [L"T", L"u_1", L"u_2", L"u_3"]
+U = dfU[:, last(vrbl)]
 plt_ = [plot() for j in axes(U, 2)]
 for j in eachindex(plt_)
     plot!(plt_[j], U.T, U[:, j], label = "EOF", color = :black, alpha = 0.5, lw = 2, ylabel = ylabel[j])
@@ -57,12 +60,19 @@ plot(plt_..., layout = (:, 1), legend = :none, size = [600, 600], xticks = 0:1:1
                     limit cycle
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''"""
-V = ssolve(f, dfU[[1], last(vrbl)], 0000:1e-2:1460)
+V = ssolve(f, dfU[[1], last(vrbl)], 0000:1e-2:9000)
 V = ssolve(f, dfU[[1], last(vrbl)], 2000:1e-2:3000)
 plot(V.u1, V.u2, V.u3, color = :red, legend = :none, size = [400, 400], label = :none, xlabel = ylabel[2], ylabel = ylabel[3], zlabel = ylabel[4])
 scatter!(V.u1[[end]], V.u2[[end]], V.u3[[end]], color = :red, msc = :white)
 
+plot(U.u1, U.u2, U.u3, color = :black, )
+plot!(V.u1, V.u2, V.u3, color = :red, α = 0.5)
 
+plot(
+    plot(V.u1),
+    plot(V.u2),
+    plot(V.u3)
+)
 """''''''''''''''''''''''''''''''''''''''''''''''''''
 
                 performance evaluation
@@ -70,6 +80,7 @@ scatter!(V.u1[[end]], V.u2[[end]], V.u3[[end]], color = :red, msc = :white)
 ''''''''''''''''''''''''''''''''''''''''''''''''''"""
 year0 = 2023
 test = Matrix(nino34[(Date(year0) .≤ T), id_target])
+test = test .- μ
 _test = DataFrame(eof2U(test, 3), ["u1", "u2", "u3"])
 _test = [DataFrame(T = (1:nrow(_test))/365) _test]
 tend = 120
@@ -124,3 +135,4 @@ plot(
 )
 
 
+heatmapreshape(collect(nino34m[1, :]), 251, :)

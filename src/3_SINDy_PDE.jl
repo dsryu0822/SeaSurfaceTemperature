@@ -1,36 +1,26 @@
 ROOT = ifelse(Sys.KERNEL == :NT, "C:/Users/rmsms/OneDrive/lab/", "/home/chaos")
 include.(readdir("$(ROOT)/DataDrivenModel/core", join=true)[[1,2,3,6]])
 include("0_utils.jl")
+@time JLD2.@load "G:/seasurface/nino34TUV.jld2"
 
-@time JLD2.@load "nino34tuv.jld2"
+∂x(M) = (circshift(M, (0, -1)) - circshift(M, (0, 1)))
+∂y(M) = (circshift(M, (-1, 0)) - circshift(M, (1, 0)))
+∂xx(M) = (circshift(M, (0, -1)) - 2M + circshift(M, (0, 1)))
+∂yy(M) = (circshift(M, (-1, 0)) - 2M + circshift(M, (1, 0)))
 
-# nino34T = [DataFrame(date=D) DataFrame(reshape(T, prod(size(T[:,:,1])), :)', ["T$k" for k in 1:3125])]; CSV.write("G:/seasurface/nino34T.csv", nino34T)
-# nino34U = [DataFrame(date=D) DataFrame(reshape(U, prod(size(U[:,:,1])), :)', ["U$k" for k in 1:3125])]; CSV.write("G:/seasurface/nino34U.csv", nino34U)
-# nino34V = [DataFrame(date=D) DataFrame(reshape(V, prod(size(V[:,:,1])), :)', ["V$k" for k in 1:3125])]; CSV.write("G:/seasurface/nino34V.csv", nino34V)
-
-_dT = diff(T, dims = 3); _dU = diff(U, dims = 3); _dV = diff(V, dims = 3);
-_T = T[:, :, 1:end-1]; _U = U[:, :, 1:end-1]; _V = V[:, :, 1:end-1];
-
-_Tx = circshift(_T, (0, -1, 0)) - circshift(_T, (0, 1, 0))
-_Ty = circshift(_T, (-1, 0, 0)) - circshift(_T, (1, 0, 0))
-_Txx = circshift(_T, (0, -1, 0)) - 2*_T + circshift(_T, (0, 1, 0))
-_Tyy = circshift(_T, (-1, 0, 0)) - 2*_T + circshift(_T, (1, 0, 0))
-_Ux = circshift(_U, (0, -1, 0)) - circshift(_U, (0, 1, 0))
-_Uy = circshift(_U, (-1, 0, 0)) - circshift(_U, (1, 0, 0))
-_Uxx = circshift(_U, (0, -1, 0)) - 2*_U + circshift(_U, (0, 1, 0))
-_Uyy = circshift(_U, (-1, 0, 0)) - 2*_U + circshift(_U, (1, 0, 0))
-_Vx = circshift(_V, (0, -1, 0)) - circshift(_V, (0, 1, 0))
-_Vy = circshift(_V, (-1, 0, 0)) - circshift(_V, (1, 0, 0))
-_Vxx = circshift(_V, (0, -1, 0)) - 2*_V + circshift(_V, (0, 1, 0))
-_Vyy = circshift(_V, (-1, 0, 0)) - 2*_V + circshift(_V, (1, 0, 0))
-for W in [_Tx, _Ty, _Txx, _Tyy, _Ux, _Uy, _Uxx, _Uyy, _Vx, _Vy, _Vxx, _Vyy]
-    W[1, :, :] .= W[2, :, :]
-    W[:, 1, :] .= W[:, 2, :]
-    W[end, :, :] .= W[end-1, :, :]
-    W[:, end, :] .= W[:, end-1, :]
+function take(boundary = false; i = 1:41, j = 1:201, k = 1:2207)
+    bits = zeros(Bool, 41, 201, 2207)
+    bits[i, j, k] .= true
+    if boundary
+        bits[[1, end], :, :] .= true
+        bits[:, [1, end], :] .= true
+    else
+        bits[[1, end], :, :] .= false
+        bits[:, [1, end], :] .= false
+    end
+    return DataFrame(dT = vec(_dT[bits]), dU = vec(_dU[bits]), dV = vec(_dV[bits]), T = vec(_T[bits]), U = vec(_U[bits]), V = vec(_V[bits]), Tx = vec(_Tx[bits]), Ty = vec(_Ty[bits]), Txx = vec(_Txx[bits]), Tyy = vec(_Tyy[bits]), Ux = vec(_Ux[bits]), Uy = vec(_Uy[bits]), Uxx = vec(_Uxx[bits]), Uyy = vec(_Uyy[bits]), Vx = vec(_Vx[bits]), Vy = vec(_Vy[bits]), Vxx = vec(_Vxx[bits]), Vyy = vec(_Vyy[bits]))
 end
 
-data = DataFrame(dT = vec(_dT[2:(end-1),2:(end-1),:]), dU = vec(_dU[2:(end-1),2:(end-1),:]), dV = vec(_dV[2:(end-1),2:(end-1),:]), T = vec(_T[2:(end-1),2:(end-1),:]), U = vec(_U[2:(end-1),2:(end-1),:]), V = vec(_V[2:(end-1),2:(end-1),:]), Tx = vec(_Tx[2:(end-1),2:(end-1),:]), Ty = vec(_Ty[2:(end-1),2:(end-1),:]), Txx = vec(_Txx[2:(end-1),2:(end-1),:]), Tyy = vec(_Tyy[2:(end-1),2:(end-1),:]), Ux = vec(_Ux[2:(end-1),2:(end-1),:]), Uy = vec(_Uy[2:(end-1),2:(end-1),:]), Uxx = vec(_Uxx[2:(end-1),2:(end-1),:]), Uyy = vec(_Uyy[2:(end-1),2:(end-1),:]), Vx = vec(_Vx[2:(end-1),2:(end-1),:]), Vy = vec(_Vy[2:(end-1),2:(end-1),:]), Vxx = vec(_Vxx[2:(end-1),2:(end-1),:]), Vyy = vec(_Vyy[2:(end-1),2:(end-1),:]))
 
 # T only
 vrblT = (["dT"], ["T", "U", "V", "Tx", "Ty", "Txx", "Tyy"])
@@ -94,3 +84,31 @@ function simulate(t0 = 1)
     println()
     gif(anime, "temp1.gif", fps = 10);
 end
+
+simulate()
+"""''''''''''''''''''''''''''''''''''''''''''''''''''
+
+                    Coriolis effect
+
+''''''''''''''''''''''''''''''''''''''''''''''''''"""
+
+
+take(j = [2])
+data = shuffle(take())[1:1000, :]
+data = shuffle(take())[1:1000, :]
+fT = SINDy(data, vrblT, cnfgT); fT |> print
+fU = SINDy(data, vrblU, cnfgU); fU |> print
+fV = SINDy(data, vrblV, cnfgV); fV |> print
+
+coriU = []
+coriV = []
+for y in 2:40
+    taken = take(i = [y])
+    fT = SINDy(taken, vrblT, cnfgT); # fT |> print
+    fU = SINDy(taken, vrblU, cnfgU); fU |> print
+    fV = SINDy(taken, vrblV, cnfgV); # fV |> print
+    push!(coriU, fU.matrix[end])
+    push!(coriV, fV.matrix[end])
+end
+plot(plot(Y[2:40], coriU, ylabel = "f"), plot(Y[2:40], coriV), xlabel = "y")
+

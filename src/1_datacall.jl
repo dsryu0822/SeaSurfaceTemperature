@@ -12,6 +12,7 @@ using JLD2, DataFrames, CSV, Plots
 mm = Plots.mm
 @time jld2file = try
     JLD2.load("G:/seasurface/nino3.4/data.jld2")
+    # JLD2.load("C:/users/rmsms/data.jld2")
 catch e
     JLD2.load("/home/chaos/g/seasurface/nino3.4/data.jld2")
 end

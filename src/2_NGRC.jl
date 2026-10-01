@@ -49,7 +49,13 @@ for k in eachindex(v_)
 end
 plt_lstm
 
-plt_ngrc = plot(xticks = [0, 30, 60, 90, 120], yticks = [0.3, 0.5, 0.7], ylims = [0.3, 0.7], legend = :topright)
+plt_ngrc = plot(xticks = [0, 30, 60, 90, 120], yticks = [0.3, 0.5, 0.7], ylims = [0.3, 0.7],
+    legend = (0.1, 0.9), background_color_legend=nothing, foreground_color_legend=nothing)
+bilinear = Matrix(CSV.read("lstm_mae_by_date_lead_bilinear157126.csv", DataFrame)[:, 3:end])
+μ = mean.(eachcol(bilinear))
+σ = std.(eachcol(bilinear))/5
+plot!(plt_ngrc, μ, color = :dodgerblue, lw = 2, label = "interpolation")
+plot!(plt_ngrc, μ .- σ, fillrange = μ .+ σ, fillcolor = :dodgerblue, fillalpha = 0.2, label = :none, alpha = 0)
 μ = mean.(eachcol(pfmc_l))
 σ = std.(eachcol(pfmc_l))/5
 plot!(plt_ngrc, μ, color = :gray, lw = 2, label = "observer")
@@ -61,35 +67,57 @@ plot!(plt_ngrc, μ .- σ, fillrange = μ .+ σ, fillcolor = :orangered, fillalph
 
 plot(
     plt_lstm, plt_ngrc,
-    layout = (:, 1), size = [300, 300]
+    layout = (:, 1), size = [300, 400]
 )
 
 
-minecraft = CSV.read("lstm_optimal_96points_prediction_4days.csv", DataFrame)[:, 5:2:end]
+"""''''''''''''''''''''''''''''''''''''''''''''''''''
 
+                bilinear interpolation
+
+''''''''''''''''''''''''''''''''''''''''''''''''''"""
+
+using Interpolations
+
+x = [1.0, 2.0, 3.5, 5.0]   # 불균일 간격 가능
+y = [1.0, 2.5, 4.0]
+z = rand(length(x), length(y))
+
+Z = reshape(collect(minecraft[2, :]), 6, 16)
+
+itp = interpolate((
+    round.(Int64, range(1, 251, length = 6)),
+    round.(Int64, range(1, 626, length = 16)),
+    ), Z, Gridded(Linear()))
+
+
+value = [itp(i, j) for i in 1:251, j in 1:626]
+
+heatmap(value)
+
+
+minecraft = CSV.read("lstm_optimal_96points_prediction_4days.csv", DataFrame)[:, 5:2:end]
 t0_ = [46, 116, 271, 351]
 for k = eachindex(t0_)
+    Z = reshape(collect(minecraft[k, :]), 6, 16)
+    itp = interpolate((
+        round.(Int64, range(1, 251, length = 6)),
+        round.(Int64, range(1, 626, length = 16)),
+        ), Z, Gridded(Linear()))
+    Z1 = [itp(i, j) for i in 1:251, j in 1:626]
+    Z0 = to2(test[90+t0_[k], :]')
+    Z2 = to2(rcv(f(P_i_[t0_[k]])[90,:])')
     plot(
-        heatmap(to2(test[90+t0_[k], :]'), color = RdYlBu_r,),
-        heatmap(reshape(collect(minecraft[k, :]), 6, :), color = RdYlBu_r,),
-        heatmap(to2(rcv(f(P_i_[t0_[k]])[90,:])'), color = RdYlBu_r,),
+        heatmap(Z0, color = RdYlBu_r,),
+        # heatmap(reshape(collect(minecraft[k, :]), 6, :), color = RdYlBu_r,),
+        heatmap(Z1, color = RdYlBu_r,),
+        heatmap(Z2, color = RdYlBu_r,),
         layout = (:, 1), ticks = [], colorbar = false, margin = -1.6mm, size = [250, 150]
     )
+    @info "t0=$(t0_[k])" mean(abs, skipmissing(Z0 - Z1)), mean(abs, skipmissing(Z0 - Z2))
     png("t0=$(t0_[k])")
 end
 for t0 in [46, 116, 271, 351]
     D[D .≥ Date(2025)][t0 .+ [0, 90]] |> println
 end
 
-
-T365 = T[Date(2025) .≤ T]
-T365[Day.(T365) .== Day(1)]
-for k in findall(Day.(T365) .== Day(1))[1:12]
-    Z = to2(test[120+k, :]) - to2(rcv(f(P_i_[k])[120,:]))
-    plt_err_spc = heatmap(Z, ticks = [], colorbar = false, margin = -1.6mm, color = :balance)
-    scatter!(plt_err_spc, first.(optimalpoints), last.(optimalpoints), color = :black, msc = :white, shape = :rect)
-    plt_abserr_ = heatmap(abs.(Z), ticks = [], colorbar = false, margin = -1.6mm, color = cgrad(:RdYlGn, rev = true))
-    scatter!(plt_abserr_, first.(optimalpoints), last.(optimalpoints), color = :black, msc = :white, shape = :rect)
-    plot(plt_err_spc, plt_abserr_, layout = (:, 1), size = [500, 400], plot_title = "$(T365[k]) → $(T365[k+120])")
-    png("error_$(T365[k])")
-end

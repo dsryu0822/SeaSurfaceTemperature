@@ -1,3 +1,4 @@
+using Random
 # if Sys.KERNEL == :NT
 #     ROOT = "C:/Users/rmsms/OneDrive/lab/"
 # else
