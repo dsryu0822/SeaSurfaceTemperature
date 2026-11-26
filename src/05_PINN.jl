@@ -3,11 +3,6 @@ include.(readdir("$(ROOT)/DataDrivenModel/core", join=true)[[1,2,3,6]])
 include("0_utils.jl")
 @time JLD2.@load "G:/seasurface/nino34TUV.jld2"
 
-∂x(M) = (circshift(M, (0, -1)) - circshift(M, (0, 1)))
-∂y(M) = (circshift(M, (-1, 0)) - circshift(M, (1, 0)))
-∂xx(M) = (circshift(M, (0, -1)) - 2M + circshift(M, (0, 1)))
-∂yy(M) = (circshift(M, (-1, 0)) - 2M + circshift(M, (1, 0)))
-
 function take(boundary = false; i = 1:41, j = 1:201, k = 1:2207)
     bits = zeros(Bool, 41, 201, 2207)
     bits[i, j, k] .= true
@@ -18,190 +13,120 @@ function take(boundary = false; i = 1:41, j = 1:201, k = 1:2207)
         bits[[1, end], :, :] .= false
         bits[:, [1, end], :] .= false
     end
-    return DataFrame(dT = vec(_dT[bits]), dU = vec(_dU[bits]), dV = vec(_dV[bits]), T = vec(_T[bits]), U = vec(_U[bits]), V = vec(_V[bits]), Tx = vec(_Tx[bits]), Ty = vec(_Ty[bits]), Txx = vec(_Txx[bits]), Tyy = vec(_Tyy[bits]), Ux = vec(_Ux[bits]), Uy = vec(_Uy[bits]), Uxx = vec(_Uxx[bits]), Uyy = vec(_Uyy[bits]), Vx = vec(_Vx[bits]), Vy = vec(_Vy[bits]), Vxx = vec(_Vxx[bits]), Vyy = vec(_Vyy[bits]))
+    return DataFrame(dT = vec(_dT[bits]), dU = vec(_dU[bits]), dV = vec(_dV[bits]), T = vec(_T[bits]), U = vec(_U[bits]), V = vec(_V[bits]), Tx = vec(_Tx[bits]), Ty = vec(_Ty[bits]), Txx = vec(_Txx[bits]), Tyy = vec(_Tyy[bits]), Ux = vec(_Ux[bits]), Uy = vec(_Uy[bits]), Uxx = vec(_Uxx[bits]), Uyy = vec(_Uyy[bits]), Vx = vec(_Vx[bits]), Vy = vec(_Vy[bits]), Vxx = vec(_Vxx[bits]), Vyy = vec(_Vyy[bits]), y = [Y[id[1]] for id in findall(bits)])
 end
-
-
-# T only
-vrblT = (["dT"], ["T", "U", "V", "Tx", "Ty", "Txx", "Tyy"])
-cnfgT = cook(vrblT; poly = 0:2)[[1,18,24,7,8], :]
-@time fT = SINDy(data, vrblT, cnfgT); fT |> print
-
-# U only
-vrblU = (["dU"], ["U", "V", "Ux", "Uy", "Uxx", "Uyy"])
-cnfgU = cook(vrblU; poly = 0:2)[[1,10,16,6,7,3], :]
-@time fU = SINDy(data, vrblU, cnfgU); fU |> print
-
-# V only
-vrblV = (["dV"], ["U", "V", "Vx", "Vy", "Vxx", "Vyy"])
-cnfgV = cook(vrblV; poly = 0:2)[[1,10,16,6,7,2], :]
-@time fV = SINDy(data, vrblV, cnfgV); fV |> print
-
-
-define(fT, sigdigits = 5) |> print
-define(fU, sigdigits = 5) |> print
-define(fV, sigdigits = 5) |> print
-function simulate(t0 = 1)
-    mae_ = []
-    Δ = 1e-2; tend = 120
-    T0 = _T[:, :, t0]; U0 = _U[:, :, t0]; V0 = _V[:, :, t0]
-    dirichlet  = zeros(Bool, size(T0)...); dirichlet[[1, end], :] .= true; dirichlet[:, [1, end]] .= true;
-    T = _T[:, :, t0]; U = _U[:, :, t0]; V = _V[:, :, t0]; Tx = _Tx[:, :, t0]; Ty = _Ty[:, :, t0]; Txx = _Txx[:, :, t0]; Tyy = _Tyy[:, :, t0]; Ux = _Ux[:, :, t0]; Uy = _Uy[:, :, t0]; Uxx = _Uxx[:, :, t0]; Uyy = _Uyy[:, :, t0]; Vx = _Vx[:, :, t0]; Vy = _Vy[:, :, t0]; Vxx = _Vxx[:, :, t0]; Vyy = _Vyy[:, :, t0];
-    anime = @animate for t in 1:tend
-        print("\rt = $t / $tend")
-        for _t in range(0, 1, step = Δ)
-            T .+= Δ*(0.0093528 .+ ( - 0.56712U.*Tx - 0.37157V.*Ty + 0.31923Txx + 0.13743Tyy))
-            U .+= Δ*(0.0026584 .+ ( - 0.36422U.*Ux - 0.15823V.*Uy + 0.35914Uxx + 0.064746Uyy + 0.0077646V))
-            V .+= Δ*(7.0035e-5 .+ ( - 0.4961U.*Vx - 0.25306V.*Vy + 0.17146Vxx + 0.2651Vyy - 0.0082463U))
-
-            T[dirichlet] .= T0[dirichlet]
-            U[dirichlet] .= U0[dirichlet]
-            V[dirichlet] .= V0[dirichlet]
-
-            Tx = circshift(T, (0, -1)) - circshift(T, (0, 1))
-            Ty = circshift(T, (-1, 0)) - circshift(T, (1, 0))
-            Txx = circshift(T, (0, -1)) - 2*T + circshift(T, (0, 1))
-            Tyy = circshift(T, (-1, 0)) - 2*T + circshift(T, (1, 0))
-            Ux = circshift(U, (0, -1)) - circshift(U, (0, 1))
-            Uy = circshift(U, (-1, 0)) - circshift(U, (1, 0))
-            Uxx = circshift(U, (0, -1)) - 2*U + circshift(U, (0, 1))
-            Uyy = circshift(U, (-1, 0)) - 2*U + circshift(U, (1, 0))
-            Vx = circshift(V, (0, -1)) - circshift(V, (0, 1))
-            Vy = circshift(V, (-1, 0)) - circshift(V, (1, 0))
-            Vxx = circshift(V, (0, -1)) - 2*V + circshift(V, (0, 1))
-            Vyy = circshift(V, (-1, 0)) - 2*V + circshift(V, (1, 0))
-        end
-        _mae = mae(T[2:(end-1), 2:(end-1)], _T[2:(end-1), 2:(end-1), t0 + t])
-        push!(mae_, _mae)
-        plot(
-            heatmap(_T[:, :, t0 + t], legend = :none, color = RdYlBu_r),
-            heatmap(T, legend = :none, color = RdYlBu_r),
-            plot(mae_, legend = :none, color = :black, xlims = [0, tend], ylims = [0, 1]),
-            clims = (19, 31),
-            layout = (:, 1), size = [600, 400], plot_title = "t = $t0 + $t ($(D[t]))"
-        )
-    end
-    println()
-    gif(anime, "temp1.gif", fps = 10);
-end
-
-simulate()
-"""''''''''''''''''''''''''''''''''''''''''''''''''''
-
-                    Coriolis effect
-
-''''''''''''''''''''''''''''''''''''''''''''''''''"""
-
-take(j = [2])
-data = shuffle(take())[1:1000, :]
-fT = SINDy(data, vrblT, cnfgT); fT |> print
-fU = SINDy(data, vrblU, cnfgU); fU |> print
-fV = SINDy(data, vrblV, cnfgV); fV |> print
-
-coriU = []
-coriV = []
-for y in 2:40
-    taken = take(i = [y])
-    fT = SINDy(taken, vrblT, cnfgT); # fT |> print
-    fU = SINDy(taken, vrblU, cnfgU); fU |> print
-    fV = SINDy(taken, vrblV, cnfgV); # fV |> print
-    push!(coriU, fU.matrix[end])
-    push!(coriV, fV.matrix[end])
-end
-plot(plot(Y[2:40], coriU, ylabel = "f"), plot(Y[2:40], coriV), xlabel = "y")
-
-
 
 """''''''''''''''''''''''''''''''''''''''''''''''''''
 
-                        PINN
+                    NeuralPDE
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''"""
 
-# _T, _U, _V, X, Y가 로딩된 상태에서 이 섹션을 실행한다.
-using Flux, Random, Statistics
+# 7.5.0 릴리스 이후의 GPU 수정본. 새 Julia 세션에서 아래 명령을 실행한 뒤 재시작한다.
+# import Pkg
+# Pkg.add(Pkg.PackageSpec(url="https://github.com/SciML/NeuralPDE.jl", rev="50e4b404557f7a4eeab63bd85919bd4c86b240aa"))
 
-t0 = 1
-tend = 5.0                      # 예측 기간 (일)
-epochs = 1000
-v, κ = 100.0, 100.0              # 유효 점성/열확산계수 (m²/s), 실험용 값
+using NeuralPDE, Lux, OptimizationOptimisers, ProgressMeter, Random, Statistics, CUDA
+using DomainSets: Interval
+import NeuralPDE: Optimization, Zygote
+
+# Julia 1.13 / Zygote 0.7.16: 많은 기울기를 한 CUDA 커널에서 합칠 때의 컴파일 오류를 피한다.
+function Zygote.accum(x::CuArray,y::CuArray,z::CuArray,zs::CuArray...)
+    return foldl(Zygote.accum,zs; init=Zygote.accum(Zygote.accum(x,y),z))
+end
+
+@parameters t x y
+@variables u(..) v(..) T(..)
+Dt, Dx, Dy = Differential(t), Differential(x), Differential(y)
+Dxx, Dyy = Dx^2, Dy^2
+
+t0 = 6*366; _t = t0-1; t1 = t0+10
 Random.seed!(42)
+
+# 관측은 t0-_t:t0까지만 사용. _dQ[:,:,k]는 Q[:,:,k+1]-Q[:,:,k]이므로 마지막 k는 t0-1.
+data = take(k = (t0-_t):(t0-1))
+# 저장된 이웃 차분을 경도·위도에 대한 미분으로 맞춘다.
+dx, dy = X[2]-X[1], Y[2]-Y[1]
+data[:,[:Tx,:Ux,:Vx]] ./= 2dx
+data[:,[:Ty,:Uy,:Vy]] ./= 2dy
+data[:,[:Txx,:Uxx,:Vxx]] ./= dx^2
+data[:,[:Tyy,:Uyy,:Vyy]] ./= dy^2
+
+function eatonly(cnfg, terms)
+    _cnfg = filter(:term => ∈(terms), cnfg)
+    return _cnfg[[findfirst(_cnfg.term .== trm) for trm in terms], :]
+end
+
+
+vrblU = (["dU"], ["U", "V", "Ux", "Uy", "Uxx", "Uyy", "y"])
+cnfgU = eatonly(cook(vrblU; poly = 0:2), ["1", "U⋅Ux","Uy⋅V","Uxx","Uyy","V⋅y"])
+@time gU = SINDy(data, vrblU, cnfgU); gU |> print
+a1, ax, ay, akx, aky, aβ = gU.matrix
+
+vrblV = (["dV"], ["U", "V", "Vx", "Vy", "Vxx", "Vyy", "y"])
+cnfgV = eatonly(cook(vrblV; poly = 0:2), ["1", "U⋅Vx", "V⋅Vy", "Vxx", "Vyy", "U⋅y"])
+@time gV = SINDy(data, vrblV, cnfgV); gV |> print
+b1, bx, by, bkx, bky, bβ = gV.matrix
+
+vrblT = (["dT"], ["T", "U", "V", "Tx", "Ty", "Txx", "Tyy"])
+cnfgT = eatonly(cook(vrblT; poly = 0:2), ["1", "Tx⋅U", "Ty⋅V", "Txx", "Tyy"])
+@time gT = SINDy(data, vrblT, cnfgT); gT |> print
+c1, cx, cy, ckx, cky = gT.matrix
 
 T0, U0, V0 = _T[:,:,t0], _U[:,:,t0], _V[:,:,t0]
 ny, nx = size(T0)
-Lx = 6_371_000 * cosd(mean(Y)) * deg2rad(last(X)-first(X))
-Ly = 6_371_000 * deg2rad(last(Y)-first(Y))
-ts = tend * 86400
-us = max(sqrt(mean(abs2,U0) + mean(abs2,V0)), 0.01)
-Ts = max(std(T0), 0.1)
-offset05 = [0., 0., mean(T0), 0.]
-scale05 = [us, us, Ts, us^2]      # 출력: u, v, T, π=p/ρ₀
-ax, ay = ts*us/Lx, ts*us/Ly
-vx, vy, κx, κy = ts*v/Lx^2, ts*v/Ly^2, ts*κ/Lx^2, ts*κ/Ly^2
+grid = [fill(t0, ny*nx)'; reshape([x for y in Y,x in X],1,:); reshape([y for y in Y,x in X],1,:)]
+q0 = [vec(U0)'; vec(V0)'; vec(T0)']
+id_ic = rand(1:ny*nx, 512)
+id_bc = rand(findall(vec([i in (1,ny) || j in (1,nx) for i in 1:ny,j in 1:nx])), 256)
+initial, qic, qbc = grid[:,id_ic], q0[:,id_ic], q0[:,id_bc]
+boundary = [t0 .+ (t1-t0)*rand(1,length(id_bc)); grid[2:3,id_bc]]
+initial, boundary, qic, qbc = cu.((initial,boundary,qic,qbc))
 
-# 좌표 (시간, x, y)를 [0,1]로 정규화. 배열은 (y,x).
-grid05 = vcat(zeros(1,ny*nx),
-    reshape([(x-first(X))/(last(X)-first(X)) for y in Y,x in X],1,:),
-    reshape([(y-first(Y))/(last(Y)-first(Y)) for y in Y,x in X],1,:))
-q0 = ([vec(U0)'; vec(V0)'; vec(T0)'] .- offset05[1:3]) ./ scale05[1:3]
-@assert all(isfinite,q0) "초기장에 missing/NaN이 없는 영역을 선택하세요"
-edge05 = findall(vec([i in (1,ny) || j in (1,nx) for i in 1:ny,j in 1:nx]))
-ic05 = rand(1:ny*nx,512)
-bc05 = rand(edge05,512)
-net05 = Flux.f64(Chain(Dense(3=>32,tanh), Dense(32=>32,tanh), Dense(32=>4)))
+# eqs = [
+#     Dt(u(t,x,y)) + u(t,x,y)*Dx(u(t,x,y)) + v(t,x,y)*Dy(u(t,x,y)) ~ (Dxx(u(t,x,y)) + Dyy(u(t,x,y))),
+#     Dt(v(t,x,y)) + u(t,x,y)*Dx(v(t,x,y)) + v(t,x,y)*Dy(v(t,x,y)) ~ (Dxx(v(t,x,y)) + Dyy(v(t,x,y))),
+#     Dt(T(t,x,y)) + u(t,x,y)*Dx(T(t,x,y)) + v(t,x,y)*Dy(T(t,x,y)) ~ (Dxx(T(t,x,y)) + Dyy(T(t,x,y))),
+# ]
+eqs = [
+    Dt(u(t,x,y)) ~ (a1*u(t,x,y) + ax*u(t,x,y)*Dx(u(t,x,y)) + ay*v(t,x,y)*Dy(u(t,x,y)) + akx*Dxx(u(t,x,y)) + aky*Dyy(u(t,x,y)) + aβ*v(t,x,y)*y),
+    Dt(v(t,x,y)) ~ (b1*v(t,x,y) + bx*u(t,x,y)*Dx(v(t,x,y)) + by*v(t,x,y)*Dy(v(t,x,y)) + bkx*Dxx(v(t,x,y)) + bky*Dyy(v(t,x,y)) + bβ*u(t,x,y)*y),
+    Dt(T(t,x,y)) ~ (c1*T(t,x,y) + cx*u(t,x,y)*Dx(T(t,x,y)) + cy*v(t,x,y)*Dy(T(t,x,y)) + ckx*Dxx(T(t,x,y)) + cky*Dyy(T(t,x,y)))
+]
 
-# tanh의 연쇄법칙으로 1·2차 미분 계산.
-function derivatives05(m,z)
-    h = 2z .- 1
-    dt = repeat([2.,0.,0.],1,size(z,2))
-    dx = repeat([0.,2.,0.],1,size(z,2))
-    dy = repeat([0.,0.,2.],1,size(z,2))
-    dxx, dyy = zero(h), zero(h)
-    for (k,l) in enumerate(m.layers)
-        a = l.weight*h .+ l.bias
-        at, ax_, ay_ = l.weight*dt, l.weight*dx, l.weight*dy
-        axx, ayy = l.weight*dxx, l.weight*dyy
-        k == length(m.layers) && return (a,at,ax_,ay_,axx,ayy)
-        h = tanh.(a)
-        g, gg = 1 .- h.^2, -2h .* (1 .- h.^2)
-        dt, dx, dy = g.*at, g.*ax_, g.*ay_
-        dxx, dyy = gg.*ax_.^2 .+ g.*axx, gg.*ay_.^2 .+ g.*ayy
+domains = [t ∈ Interval(Float32(t0),Float32(t1)), x ∈ Interval(Float32.(extrema(X))...), y ∈ Interval(Float32.(extrema(Y))...)]
+@named pdesys = PDESystem(eqs, [], domains, [t,x,y], [u(t,x,y),v(t,x,y),T(t,x,y)])
+
+model = Lux.Chain(Lux.Dense(3,100,sin), Lux.Dense(100,100,tanh), Lux.Dense(100,3; init_bias=Returns(Float32.(vec(mean(q0;dims=2))))))
+function Loss(_,θ,_)
+    return mean(abs2.(NN(initial,θ.u) - qic))
+     + mean(abs2.(NN(boundary,θ.u) - qbc))
+end
+
+disc = PhysicsInformedNN(model,QuasiRandomTraining(256; resampling=false); init_params=Lux.initialparameters(Random.default_rng(),model), additional_loss=Loss, eval_points=2)
+prob = discretize(pdesys, disc; adtype=NeuralPDE.AutoZygote(), u0_constructor=CuArray,p_constructor=x -> x isa Array{Float32} ? CuArray(x) : x)
+NN = NeuralPDE.getdefault(first(NeuralPDE.pinn_metadata(prob).networks).NN)
+
+EPOCH = 1000
+L_ = Float32[]
+prgrs = Progress(EPOCH; color=:blue)
+callback = function (state,L)
+    if state.iter > length(L_)
+        push!(L_,L)
+        ProgressMeter.update!(prgrs,state.iter; showvalues=[("epoch", argmin(L_)), ("Loss", minimum(L_))])
     end
+    return false
 end
+res = Optimization.solve(prob, OptimizationOptimisers.Adam(); callback, maxiters=EPOCH, save_best=true)
 
-function loss05(m,z,zbc)
-    q, qt, qx, qy, qxx, qyy = derivatives05(m,z)
-    u, v = q[1:1,:], q[2:2,:]
-    # z방향을 제외한 운동량 2식·열수송식·비압축성 조건.
-    ru = qt[1:1,:] + ax*u.*qx[1:1,:] + ay*v.*qy[1:1,:] + ax*qx[4:4,:] - vx*qxx[1:1,:] - vy*qyy[1:1,:]
-    rv = qt[2:2,:] + ax*u.*qx[2:2,:] + ay*v.*qy[2:2,:] + ay*qy[4:4,:] - vx*qxx[2:2,:] - vy*qyy[2:2,:]
-    rT = qt[3:3,:] + ax*u.*qx[3:3,:] + ay*v.*qy[3:3,:] - κx*qxx[3:3,:] - κy*qyy[3:3,:]
-    div = qx[1:1,:] + (Lx/Ly)*qy[2:2,:]
-    # 초기조건 + 초기장의 경계값을 모든 시점에 고정하는 Dirichlet 조건 (loss로 근사).
-    ic = m(2grid05[:,ic05] .- 1)[1:3,:] - q0[:,ic05]
-    bc = m(2zbc .- 1)[1:3,:] - q0[:,bc05]
-    gauge = m(2vcat(z[1:1,:],fill(0.5,2,size(z,2))) .- 1)[4:4,:]
-    return mean(abs2,ru) + mean(abs2,rv) + mean(abs2,rT) + mean(abs2,div) +
-        10mean(abs2,ic) + 10mean(abs2,bc) + 0.1mean(abs2,gauge)
-end
-
-opt05 = Flux.setup(Flux.Adam(1e-3),net05)
-loss_history05 = Float64[]
-for epoch in 1:90000
-    z = rand(3,256)
-    zbc = vcat(rand(1,length(bc05)),grid05[2:3,bc05])
-    loss, grads = Flux.withgradient(m -> loss05(m,z,zbc),net05)
-    isfinite(loss) || error("loss가 발산했습니다. 학습률이나 tend를 줄이세요")
-    Flux.update!(opt05,net05,grads[1])
-    push!(loss_history05,loss)
-    epoch % 100 == 0 && println("epoch=$epoch, loss=$loss")
-end
-
-# tend일 후의 장을 원래 격자로 복원하고 표시.
-zpred05 = copy(grid05); zpred05[1,:] .= 1
-qpred05 = net05(2zpred05 .- 1) .* scale05 .+ offset05
-Upinn = reshape(qpred05[1,:],ny,nx)
-Vpinn = reshape(qpred05[2,:],ny,nx)
-Tpinn = reshape(qpred05[3,:],ny,nx)
-plot(heatmap(T0,title="Initial T"), heatmap(Tpinn,title="PINN T, +$tend days"),
-    plot(loss_history05,scale=:log10,title="loss"), layout=(3,1),size=(600,600))
+t1 = 2197
+Upinn, Vpinn, Tpinn = map(q -> permutedims(dropdims(q; dims=1)), res(Float32(t1),Float32.(X),Float32.(Y)))
+# 표시 시점과 별개로, PDE를 학습한 구간 전체의 온도 오차를 평가한다.
+lead = 0:Int(last(res[t])-t0)
+rmse_ = [sqrt(mean(abs2, permutedims(dropdims(res(Float32(t0+d),Float32.(X),Float32.(Y); dv=T(t,x,y)); dims=1)) - _T[:,:,t0+d])) for d in lead]
+plot(
+    heatmap(X,Y,_T[:,:,t1],title="True T, t=$t1",clims=extrema(_T[:,:,t1])),
+    heatmap(X,Y,Tpinn,title="PINN T, +$(t1-t0) days",clims=extrema(_T[:,:,t1])),
+    plot(eachindex(L_), L_, scale=:log10, ticks = exp10.(-5:5), title="loss"),
+    plot(lead,rmse_,title="T RMSE",xlabel="day lead",ylabel="RMSE (°C)",marker=:circle),
+layout=(:,1), size=(600,600), legend=false)
